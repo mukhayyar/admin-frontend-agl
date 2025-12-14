@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { reviewHistoryData, reviewQueueData, backendHealthData, reviewsData } from '../data/dummy';
-import { Search, FileText, AppWindow, User, Bell } from 'lucide-react';
+import { Search, FileText, AppWindow, User } from 'lucide-react';
 
 // --- Image 0 (Stitch Design-8): Landing/Role Selection ---
 export const LandingPage: React.FC = () => {
