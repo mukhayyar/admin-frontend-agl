@@ -1,664 +1,2014 @@
-import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { reviewHistoryData, backendHealthData, reviewsData } from '@/lib/dummy'
-import { Search, FileText, AppWindow, User, Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react'
-import { getStats, getPendingApps, getHealth, issueDeveloperToken, registerApp } from '@/lib/api'
-import type { Stats, PendingApp, TokenResponse } from '@/lib/api'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useAuthStore, useSubmissionsStore, useStatsStore, useScanStore } from '../lib/stores'
+import {
+  Package,
+  Users,
+  Clock,
+  FileText,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Key,
+  Copy,
+  Trash2,
+  Plus,
+  ExternalLink,
+  ShieldCheck,
+  LayoutDashboard,
+  Star,
+  ChevronLeft,
+} from 'lucide-react'
+import {
+  getToken,
+  setToken,
+  clearToken,
+  loginGitHub,
+  getAuthUser,
+  acceptPublisherAgreement,
+  createDevKey,
+  listDevKeys,
+  revokeDevKey,
+  submitApp,
+  listMySubmissions,
+  updateSubmission,
+  getAdminStats,
+  getStats,
+  listAdminSubmissions,
+  getAdminSubmission,
+  approveSubmission,
+  rejectSubmission,
+  updateUserRole,
+  getHealth,
+  getCategories,
+  loginEmail,
+  registerEmail,
+  checkEmail,
+  forgotPassword,
+  resetPasswordApi,
+  verifyEmail,
+  resendVerification,
+  listUsers,
+  trustPublisher,
+  untrustPublisher,
+} from '@/lib/api'
+import type { AuthUser, DevKey, AppSubmission, AdminStats, PlatformStats } from '@/lib/types'
 
-// --- Landing/Role Selection ---
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-800',
+    approved: 'bg-green-100 text-green-800',
+    rejected: 'bg-red-100 text-red-800',
+  }
+  return (
+    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${styles[status] ?? 'bg-gray-100 text-gray-700'}`}>
+      {status}
+    </span>
+  )
+}
+
+function LoadingPulse({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-3 animate-pulse">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-10 bg-gray-200 rounded-lg" />
+      ))}
+    </div>
+  )
+}
+
+function EmptyState({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="text-gray-300 mb-4">{icon}</div>
+      <h3 className="text-lg font-semibold text-gray-700 mb-1">{title}</h3>
+      <p className="text-gray-400 text-sm">{desc}</p>
+    </div>
+  )
+}
+
+function fmtDate(iso?: string) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+// ── Landing Page ──────────────────────────────────────────────────────────────
+
 export const LandingPage: React.FC = () => {
   return (
-    <div className="min-h-screen bg-white flex flex-col relative">
-      <header className="px-8 py-6 flex justify-between items-center absolute w-full top-0">
-        <div className="text-xl font-bold flex items-center gap-3">
-          <div className="flex gap-0.5">
-            <div className="w-1.5 h-4 bg-black rounded-full" />
-            <div className="w-1.5 h-4 bg-black rounded-full" />
-            <div className="w-1.5 h-4 bg-black rounded-full" />
-          </div>
-          App Store
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <header className="bg-white border-b border-gray-200 px-8 py-5 flex items-center gap-3">
+        <div className="flex gap-0.5">
+          <div className="w-1.5 h-4 bg-indigo-600 rounded-full" />
+          <div className="w-1.5 h-4 bg-indigo-600 rounded-full" />
+          <div className="w-1.5 h-4 bg-indigo-600 rounded-full" />
         </div>
-        <nav className="flex gap-6 text-sm font-medium items-center text-gray-600">
-          <Link to="#">Dashboard</Link>
-          <Link to="#">Apps</Link>
-          <Link to="#">Documentation</Link>
-          <Link to="#">Support</Link>
-          <div className="w-8 h-8 bg-teal-800 rounded-full flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-white rounded-sm transform rotate-45" />
-          </div>
-        </nav>
+        <span className="text-xl font-bold text-gray-900">AGL App Store</span>
       </header>
-      <main className="flex-1 flex flex-col items-center justify-center text-center px-4 mt-20">
-        <h1 className="text-4xl font-bold mb-4">Welcome to the App Store</h1>
-        <p className="text-gray-600 text-lg mb-12">To get started, please select your role</p>
-        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xs sm:max-w-none">
-          <Link to="/admin/dashboard" className="bg-brand-dark text-white w-full sm:w-48 py-3 rounded-lg font-medium hover:opacity-90 transition text-center">Admin</Link>
-          <Link to="/developer/portal" className="bg-gray-100 text-brand-dark w-full sm:w-48 py-3 rounded-lg font-medium hover:bg-gray-200 transition text-center">Developer</Link>
+
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-16">
+        <h1 className="text-4xl font-bold text-gray-900 mb-3 text-center">AGL App Store</h1>
+        <p className="text-gray-500 text-lg mb-12 text-center">Management Portal</p>
+
+        <div className="grid sm:grid-cols-2 gap-6 w-full max-w-xl">
+          <Link
+            to="/admin/dashboard"
+            className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md hover:border-indigo-300 transition-all group"
+          >
+            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-indigo-200 transition-colors">
+              <LayoutDashboard className="text-indigo-600" size={24} />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Admin Portal</h2>
+            <p className="text-sm text-gray-500">Review submissions, manage apps and users, view analytics.</p>
+          </Link>
+
+          <Link
+            to="/developer/portal"
+            className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md hover:border-indigo-300 transition-all group"
+          >
+            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-emerald-200 transition-colors">
+              <Package className="text-emerald-600" size={24} />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Developer Portal</h2>
+            <p className="text-sm text-gray-500">Submit apps, manage API keys, track your submissions.</p>
+          </Link>
         </div>
       </main>
     </div>
   )
 }
 
-// --- Settings Page (Sidebar Layout) ---
-export const SettingsPage: React.FC = () => {
+// ── Login Page ────────────────────────────────────────────────────────────────
+
+export const LoginPage: React.FC = () => {
+  const [tab, setTab] = useState<'email' | 'github' | 'register' | 'forgot'>('email')
+  const [token, setTokenInput] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [orgInfo, setOrgInfo] = useState<{ is_organization_email: boolean; organization_domain: string | null } | null>(null)
+  const navigate = useNavigate()
+
+  async function handleEmailCheck(e: string) {
+    setEmail(e)
+    if (e.includes('@') && e.includes('.')) {
+      try { const info = await checkEmail(e); setOrgInfo(info) } catch {}
+    } else { setOrgInfo(null) }
+  }
+
+  async function handleEmailLogin() {
+    if (!email.trim() || !password.trim()) return
+    setLoading(true); setError(null)
+    try {
+      const res = await loginEmail(email.trim(), password.trim())
+      setToken(res.access_token)
+      navigate('/admin/dashboard')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Login failed') }
+    finally { setLoading(false) }
+  }
+
+  async function handleGitHubLogin() {
+    if (!token.trim()) return
+    setLoading(true); setError(null)
+    try {
+      const res = await loginGitHub(token.trim())
+      setToken(res.access_token)
+      navigate('/admin/dashboard')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Login failed') }
+    finally { setLoading(false) }
+  }
+
+  async function handleRegister() {
+    if (!email.trim() || !password.trim() || !displayName.trim()) return
+    if (password !== confirmPassword) { setError('Passwords do not match'); return }
+    setLoading(true); setError(null)
+    try {
+      await registerEmail(email.trim(), password.trim(), displayName.trim())
+      setSuccess('Account created! Check your email to verify your account.')
+      setTab('email')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Registration failed') }
+    finally { setLoading(false) }
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) return
+    setLoading(true); setError(null)
+    try {
+      await forgotPassword(email.trim())
+      setSuccess('Password reset email sent! Check your inbox.')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to send reset email') }
+    finally { setLoading(false) }
+  }
+
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-8">Settings</h1>
-      <div className="border-b mb-8 flex flex-wrap gap-4 sm:gap-8 text-sm font-medium text-gray-500">
-        <button className="pb-3 border-b-2 border-brand-dark text-brand-dark">Profile</button>
-        <button className="pb-3 hover:text-brand-dark transition">Security</button>
-        <button className="pb-3 hover:text-brand-dark transition">Notifications</button>
-      </div>
-      <div className="space-y-12 max-w-2xl">
-        <section>
-          <h2 className="text-xl font-bold mb-6">Personal Information</h2>
-          <div className="space-y-5">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 w-full max-w-md">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">PensHub App Store</h1>
+          <p className="text-gray-500 text-sm mt-1">Sign in to continue</p>
+        </div>
+
+        {tab !== 'register' && tab !== 'forgot' && (
+          <div className="flex border border-gray-200 rounded-lg mb-6 overflow-hidden">
+            <button onClick={() => { setTab('email'); setError(null); setSuccess(null) }} className={`flex-1 py-2 text-sm font-medium transition-colors ${tab === 'email' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Email</button>
+            <button onClick={() => { setTab('github'); setError(null); setSuccess(null) }} className={`flex-1 py-2 text-sm font-medium transition-colors ${tab === 'github' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>GitHub</button>
+          </div>
+        )}
+
+        {success && <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700 mb-4">{success}</div>}
+        {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 mb-4">{error}</div>}
+
+        {tab === 'email' && (
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">Full name</label>
-              <input type="text" className="input-field" defaultValue="Ethan Carter" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+              <input type="email" value={email} onChange={e => handleEmailCheck(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleEmailLogin()} placeholder="you@example.com" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              {orgInfo?.is_organization_email && <p className="text-xs text-indigo-600 mt-1">🏢 Organization account ({orgInfo.organization_domain})</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">Email</label>
-              <input type="email" className="input-field" defaultValue="ethan.carter@example.com" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleEmailLogin()} placeholder="••••••••" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">Phone number</label>
-              <input type="tel" className="input-field" placeholder="+1 555 000 0000" />
+            <button onClick={handleEmailLogin} disabled={loading || !email.trim() || !password.trim()} className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+              {loading ? <RefreshCw size={16} className="animate-spin" /> : null}
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+            <div className="flex justify-between text-xs text-gray-500">
+              <button onClick={() => { setTab('register'); setError(null); setSuccess(null) }} className="hover:text-indigo-600 underline">Create account</button>
+              <button onClick={() => { setTab('forgot'); setError(null); setSuccess(null) }} className="hover:text-indigo-600 underline">Forgot password?</button>
             </div>
           </div>
-        </section>
-        <section>
-          <h2 className="text-xl font-bold mb-6">Profile Photo</h2>
-          <div className="flex items-center gap-6">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Ethan" alt="Profile" className="w-24 h-24 rounded-full bg-orange-100" />
-            <div>
-              <h3 className="font-bold text-lg">Ethan Carter</h3>
-              <p className="text-gray-500 mb-4 text-sm">ethan.carter@example.com</p>
-              <button className="btn-secondary py-2 px-4 text-sm">Change Photo</button>
+        )}
+
+        {tab === 'github' && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 text-sm text-gray-600">
+              <p className="font-semibold text-gray-700 mb-1">How to get a token:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Go to <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-indigo-600 underline">github.com/settings/tokens</a></li>
+                <li>Click "Generate new token (classic)"</li>
+                <li>Select scopes: <code className="bg-gray-200 px-1 rounded">read:user</code>, <code className="bg-gray-200 px-1 rounded">user:email</code></li>
+              </ol>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">GitHub Personal Access Token</label>
+              <input type="password" value={token} onChange={e => setTokenInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGitHubLogin()} placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <button onClick={handleGitHubLogin} disabled={loading || !token.trim()} className="w-full bg-gray-900 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+              {loading ? <RefreshCw size={16} className="animate-spin" /> : <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>}
+              {loading ? 'Signing in…' : 'Sign in with GitHub'}
+            </button>
           </div>
-        </section>
-        <section>
-          <h2 className="text-xl font-bold mb-6">Change Password</h2>
-          <div className="space-y-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">Current password</label>
-              <input type="password" className="input-field" placeholder="Enter current password" />
+        )}
+
+        {tab === 'register' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <button onClick={() => { setTab('email'); setError(null) }} className="text-gray-500 hover:text-gray-700"><ChevronLeft size={16} /></button>
+              <h2 className="font-semibold text-gray-900">Create Account</h2>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">New password</label>
-              <input type="password" className="input-field" placeholder="Enter new password" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Display Name</label>
+              <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your Name" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">Confirm new password</label>
-              <input type="password" className="input-field" placeholder="Confirm new password" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+              <input type="email" value={email} onChange={e => handleEmailCheck(e.target.value)} placeholder="you@example.com" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              {orgInfo?.is_organization_email && <p className="text-xs text-indigo-600 mt-1">🏢 Organization account ({orgInfo.organization_domain})</p>}
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm Password</label>
+              <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleRegister()} placeholder="••••••••" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <button onClick={handleRegister} disabled={loading || !email.trim() || !password.trim() || !displayName.trim()} className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+              {loading ? <RefreshCw size={16} className="animate-spin" /> : null}
+              {loading ? 'Creating account…' : 'Create Account'}
+            </button>
           </div>
-          <button className="bg-brand-dark text-white px-6 py-2 rounded-lg text-sm font-medium">Update Password</button>
-        </section>
+        )}
+
+        {tab === 'forgot' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <button onClick={() => { setTab('email'); setError(null) }} className="text-gray-500 hover:text-gray-700"><ChevronLeft size={16} /></button>
+              <h2 className="font-semibold text-gray-900">Reset Password</h2>
+            </div>
+            <p className="text-sm text-gray-600">Enter your email and we'll send a reset link.</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} placeholder="you@example.com" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <button onClick={handleForgotPassword} disabled={loading || !email.trim()} className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+              {loading ? <RefreshCw size={16} className="animate-spin" /> : null}
+              {loading ? 'Sending…' : 'Send Reset Link'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-// --- System Health (Admin Layout) ---
-export const SystemHealthPage: React.FC = () => {
-  const [health, setHealth] = useState<{ status: string; service: string; version: string } | null>(null)
-  const [healthError, setHealthError] = useState(false)
+// ── Admin Dashboard Page ──────────────────────────────────────────────────────
+
+export const AdminDashboardPage: React.FC = () => {
+  const { stats, setStats, loading: statsLoading, setLoading: setStatsLoading } = useStatsStore()
+  const { submissions, setSubmissions } = useSubmissionsStore()
+  const [recentSubs, setRecentSubs] = useState<AppSubmission[]>([])
+  const [loading, setLoading] = useState(!stats)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getHealth().then(setHealth).catch(() => setHealthError(true))
+    async function load() {
+      try {
+        const s = await getAdminStats().catch(async () => {
+          const ps = await getStats()
+          return {
+            total_apps: ps.total_apps,
+            total_users: ps.total_users,
+            pending_submissions: 0,
+            total_submissions: 0,
+            approved_submissions: 0,
+            rejected_submissions: 0,
+          } as AdminStats
+        })
+        setStats(s)
+        const subs = await listAdminSubmissions().catch(() => [] as AppSubmission[])
+        setSubmissions(subs)
+        setRecentSubs(subs.slice(0, 5))
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load dashboard')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
   }, [])
 
-  const services = [
-    { service: 'REST API', status: health ? 'Healthy' : healthError ? 'Unreachable' : 'Checking…', updated: health ? `v${health.version}` : '—' },
-    ...backendHealthData.slice(1),
-  ]
+  const cards = stats
+    ? [
+        { icon: <Package size={24} />, label: 'Total Apps', value: stats.total_apps, color: 'indigo' },
+        { icon: <Users size={24} />, label: 'Total Users', value: stats.total_users, color: 'blue' },
+        {
+          icon: <Clock size={24} />,
+          label: 'Pending Submissions',
+          value: stats.pending_submissions,
+          color: stats.pending_submissions > 0 ? 'amber' : 'gray',
+        },
+        { icon: <FileText size={24} />, label: 'Total Submissions', value: stats.total_submissions, color: 'emerald' },
+      ]
+    : []
+
+  const colorMap: Record<string, string> = {
+    indigo: 'bg-indigo-100 text-indigo-600',
+    blue: 'bg-blue-100 text-blue-600',
+    amber: 'bg-amber-100 text-amber-600',
+    gray: 'bg-gray-100 text-gray-600',
+    emerald: 'bg-emerald-100 text-emerald-600',
+  }
+
+  const cardBorderMap: Record<string, string> = {
+    amber: 'border-amber-300 bg-amber-50',
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">
+        {error}
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-8">System Health</h1>
-      <section className="mb-12">
-        <h2 className="text-xl font-bold mb-6">UI Latency</h2>
-        <div className="card h-80 relative flex flex-col justify-between">
-          <div>
-            <p className="text-gray-500 mb-1 font-medium">UI Latency</p>
-            <div className="flex items-baseline gap-2">
-              <h3 className="text-4xl font-bold">20ms</h3>
-              <p className="text-sm text-red-500 font-medium bg-red-50 px-2 py-0.5 rounded">Last 7 Days -5%</p>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Dashboard</h1>
+        <p className="text-gray-500 text-sm">Overview of the AGL App Store.</p>
+      </div>
+
+      {loading ? (
+        <LoadingPulse rows={4} />
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {cards.map(card => (
+            <div
+              key={card.label}
+              className={`bg-white rounded-xl border shadow-sm p-6 ${cardBorderMap[card.color] ?? 'border-gray-200'}`}
+            >
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${colorMap[card.color]}`}>
+                {card.icon}
+              </div>
+              <div className="text-3xl font-bold text-gray-900 mb-0.5">{card.value}</div>
+              <div className="text-sm text-gray-500">{card.label}</div>
             </div>
-          </div>
-          <div className="flex items-end justify-between h-40 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <svg key={i} viewBox="0 0 100 60" className="w-1/4 h-full overflow-visible" preserveAspectRatio="none">
-                <path d={`M0,60 Q50,${10 * i} 100,60`} fill="none" stroke="#6b7280" strokeWidth="2" />
-              </svg>
-            ))}
-          </div>
-          <div className="flex justify-between text-xs text-gray-400 mt-2">
-            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-          </div>
+          ))}
         </div>
-      </section>
-      <section>
-        <h2 className="text-xl font-bold mb-6">Backend Health</h2>
-        <div className="card p-0 overflow-hidden border border-gray-200 overflow-x-auto">
-          <table className="w-full text-left min-w-[400px]">
-            <thead className="bg-white border-b">
+      )}
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Recent Submissions</h2>
+          <Link to="/admin/submissions" className="text-sm text-indigo-600 hover:underline">
+            View all
+          </Link>
+        </div>
+        {loading ? (
+          <div className="p-6">
+            <LoadingPulse rows={5} />
+          </div>
+        ) : recentSubs.length === 0 ? (
+          <EmptyState
+            icon={<FileText size={40} />}
+            title="No submissions yet"
+            desc="Submissions will appear here once developers submit apps."
+          />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="p-4 pl-6 text-sm font-medium text-gray-500">Service</th>
-                <th className="p-4 text-sm font-medium text-gray-500 text-center">Status</th>
-                <th className="p-4 text-sm font-medium text-gray-500 hidden sm:table-cell">Info</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">App</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Submitted</th>
+                <th className="px-6 py-3" />
               </tr>
             </thead>
-            <tbody>
-              {services.map((item, idx) => (
-                <tr key={idx} className="border-b last:border-0 hover:bg-gray-50 transition">
-                  <td className="p-4 pl-6 text-sm">{item.service}</td>
-                  <td className="p-4 text-center">
-                    <span className={`px-8 py-1.5 rounded-full text-xs font-semibold ${item.status === 'Healthy' ? 'bg-green-100 text-green-700' : item.status === 'Unreachable' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
-                      {item.status}
-                    </span>
+            <tbody className="divide-y divide-gray-100">
+              {recentSubs.map(sub => (
+                <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-3 font-medium text-gray-900">{sub.name}</td>
+                  <td className="px-6 py-3"><StatusBadge status={sub.status} /></td>
+                  <td className="px-6 py-3 text-gray-500">{fmtDate(sub.submitted_at)}</td>
+                  <td className="px-6 py-3 text-right">
+                    <Link to={`/admin/submissions/${sub.id}`} className="text-indigo-600 hover:underline text-xs font-medium">
+                      Review
+                    </Link>
                   </td>
-                  <td className="p-4 text-sm text-gray-400 font-light hidden sm:table-cell">{item.updated}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-// --- Review History ---
-export const ReviewHistoryPage: React.FC = () => {
-  return (
-    <div>
-      <div className="mb-10">
-        <h1 className="text-3xl font-bold mb-2">Review History</h1>
-        <p className="text-gray-500 font-light">View past review outcomes, including timestamps and reviewer notes.</p>
-      </div>
-      <div className="mb-6 relative">
-        <Search className="absolute left-4 top-3.5 text-gray-400" size={20} />
-        <input type="text" placeholder="Search" className="w-full bg-gray-100 rounded-lg pl-12 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-200" />
-      </div>
-      <div className="card p-0 overflow-hidden border border-gray-200 overflow-x-auto">
-        <table className="w-full text-left min-w-[600px]">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="p-4 pl-6 text-sm font-medium text-gray-900">App Name</th>
-              <th className="p-4 text-sm font-medium text-gray-900 hidden md:table-cell">Developer</th>
-              <th className="p-4 text-sm font-medium text-gray-900 hidden lg:table-cell">Reviewer</th>
-              <th className="p-4 text-sm font-medium text-gray-900 text-center">Outcome</th>
-              <th className="p-4 text-sm font-medium text-gray-900 hidden sm:table-cell">Timestamp</th>
-              <th className="p-4 text-sm font-medium text-gray-900 w-1/4 hidden lg:table-cell">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reviewHistoryData.map((item) => (
-              <tr key={item.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="p-4 pl-6 text-sm text-gray-800">{item.appName}</td>
-                <td className="p-4 text-sm text-gray-500 hidden md:table-cell">{item.developer}</td>
-                <td className="p-4 text-sm text-gray-500 hidden lg:table-cell">{item.reviewer}</td>
-                <td className="p-4 text-center">
-                  <span className={`px-4 py-1 rounded-full text-xs font-bold ${item.outcome === 'Approved' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {item.outcome}
-                  </span>
-                </td>
-                <td className="p-4 text-sm text-gray-500 whitespace-pre-line hidden sm:table-cell">{item.timestamp.replace(' ', '\n')}</td>
-                <td className="p-4 text-sm text-gray-500 hidden lg:table-cell">{item.notes}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        )}
       </div>
     </div>
   )
 }
 
-// --- Review Queue ---
-export const ReviewQueuePage: React.FC = () => {
-  const [apiKey] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('admin_api_key') || '' : ''))
-  const [apps, setApps] = useState<PendingApp[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+// ── Submissions List Page ─────────────────────────────────────────────────────
 
-  useEffect(() => {
+type SubmissionFilter = 'all' | 'pending' | 'approved' | 'rejected'
+
+export const SubmissionsListPage: React.FC = () => {
+  const { filter, setFilter, submissions, setSubmissions, loading, setLoading, error, setError } = useSubmissionsStore()
+
+  const load = useCallback(async () => {
     setLoading(true)
-    getPendingApps(apiKey)
-      .then(setApps)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [apiKey])
+    setError(null)
+    try {
+      const data = await listAdminSubmissions(filter === 'all' ? undefined : filter)
+      setSubmissions(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load submissions')
+    } finally {
+      setLoading(false)
+    }
+  }, [filter])
+
+  useEffect(() => { load() }, [load])
+
+  const filters: SubmissionFilter[] = ['all', 'pending', 'approved', 'rejected']
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Review Queue</h1>
-        <p className="text-gray-500">Apps recently submitted or updated — pending review.</p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">App Submissions</h1>
+        <p className="text-gray-500 text-sm">Review and manage app submissions from developers.</p>
       </div>
-      <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-        <table className="w-full text-left min-w-[500px]">
-          <thead className="bg-white border-b">
-            <tr>
-              <th className="p-4 pl-5 text-sm font-medium text-gray-700">Name</th>
-              <th className="p-4 text-sm font-medium text-gray-700 hidden sm:table-cell">Developer</th>
-              <th className="p-4 text-sm font-medium text-gray-700 hidden md:table-cell">App ID</th>
-              <th className="p-4 text-sm font-medium text-gray-700 hidden lg:table-cell">Added</th>
-              <th className="p-4 text-sm font-medium text-gray-700 text-right pr-5">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td colSpan={5} className="p-8 text-center text-gray-400"><Loader className="inline animate-spin mr-2" size={16} />Loading…</td></tr>
-            )}
-            {!loading && error && (
-              <tr><td colSpan={5} className="p-8 text-center text-red-500"><AlertCircle className="inline mr-2" size={16} />{error}</td></tr>
-            )}
-            {!loading && !error && apps.length === 0 && (
-              <tr><td colSpan={5} className="p-8 text-center text-gray-400">No pending apps.</td></tr>
-            )}
-            {!loading && !error && apps.map((item) => (
-              <tr key={item.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="p-4 pl-5 font-medium text-gray-800">{item.name || item.id}</td>
-                <td className="p-4 text-gray-500 hidden sm:table-cell">{item.developer_name}</td>
-                <td className="p-4 font-mono text-xs text-gray-500 hidden md:table-cell">{item.id}</td>
-                <td className="p-4 text-gray-500 text-sm hidden lg:table-cell">{item.added_at ? new Date(item.added_at).toLocaleDateString() : '—'}</td>
-                <td className="p-4 text-right pr-5">
-                  <button className="text-gray-900 font-bold hover:underline text-sm">Review</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
 
-// --- Admin Dashboard ---
-export const AdminDashboardPage: React.FC = () => {
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [statsError, setStatsError] = useState(false)
-
-  useEffect(() => {
-    getStats().then(setStats).catch(() => setStatsError(true))
-  }, [])
-
-  return (
-    <div>
-      <h1 className="text-3xl font-bold mb-10">Dashboard</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-12">
-        {[
-          { label: 'Total Apps', value: stats?.total_apps },
-          { label: 'Total Users', value: stats?.total_users },
-          { label: 'Categories', value: stats?.total_categories },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white p-6 rounded-lg border border-gray-200">
-            <p className="text-gray-600 mb-2 font-medium">{label}</p>
-            <h2 className="text-4xl font-bold">
-              {statsError ? '—' : value !== undefined ? value.toLocaleString() : <Loader className="inline animate-spin" size={28} />}
-            </h2>
-          </div>
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+        {filters.map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
+              filter === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {f}
+          </button>
         ))}
       </div>
-      <div className="flex gap-4 mb-10">
-        <Link to="/developer/portal" className="bg-brand-dark text-white px-6 py-2 rounded-lg text-sm font-medium">Issue Developer Token</Link>
-        <Link to="/review-queue" className="bg-gray-200 text-brand-dark px-6 py-2 rounded-lg text-sm font-medium">View Review Queue</Link>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        {error ? (
+          <div className="p-6 text-red-700 bg-red-50 rounded-xl">{error}</div>
+        ) : loading ? (
+          <div className="p-6"><LoadingPulse rows={6} /></div>
+        ) : submissions.length === 0 ? (
+          <EmptyState
+            icon={<FileText size={40} />}
+            title="No submissions found"
+            desc={`No ${filter === 'all' ? '' : filter + ' '}submissions at the moment.`}
+          />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">App ID</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Submitted</th>
+                <th className="px-6 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {submissions.map(sub => (
+                <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-3 font-mono text-xs text-gray-500">{sub.app_id}</td>
+                  <td className="px-6 py-3 font-medium text-gray-900">{sub.name}</td>
+                  <td className="px-6 py-3"><StatusBadge status={sub.status} /></td>
+                  <td className="px-6 py-3 text-gray-500">{fmtDate(sub.submitted_at)}</td>
+                  <td className="px-6 py-3 text-right">
+                    <Link
+                      to={`/admin/submissions/${sub.id}`}
+                      className="text-indigo-600 hover:underline text-xs font-medium"
+                    >
+                      Review
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
-      <h2 className="text-xl font-bold mb-6">Activity Feed</h2>
-      <div className="relative pl-4">
-        <div className="absolute left-6 top-0 bottom-4 w-0.5 bg-gray-200" />
-        <div className="space-y-8">
-          {[
-            { icon: AppWindow, text: 'New app submitted via flat-manager', time: 'recently' },
-            { icon: '✓', text: 'Review queue updated', time: 'on sync' },
-            { icon: AppWindow, text: 'Backend REST API started on :8002', time: 'on boot' },
-            { icon: User, text: 'Developer portal activated', time: 'this session' },
-            { icon: FileText, text: 'OSTree repository serving apps', time: 'running' },
-          ].map((item, idx) => (
-            <div key={idx} className="flex items-start gap-4 relative z-10">
-              <div className="w-5 h-5 bg-white border border-black rounded flex items-center justify-center text-xs mt-1 shadow-sm">
-                {typeof item.icon === 'string' ? item.icon : <div className="w-1 h-1 bg-black rounded-full" />}
+    </div>
+  )
+}
+
+// ── Submission Details Page ───────────────────────────────────────────────────
+
+export const SubmissionDetailsPage: React.FC = () => {
+  const { id } = useParams<{ id: string }>()
+  const [sub, setSub] = useState<AppSubmission | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+
+  useEffect(() => {
+    if (!id) return
+    setLoading(true)
+    getAdminSubmission(Number(id))
+      .then(setSub)
+      .catch(e => setError(e instanceof Error ? e.message : 'Failed to load submission'))
+      .finally(() => setLoading(false))
+  }, [id])
+
+  async function handleApprove() {
+    if (!sub) return
+    setActionLoading(true)
+    try {
+      await approveSubmission(sub.id)
+      setSub({ ...sub, status: 'approved' })
+      setActionSuccess('Submission approved successfully.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to approve')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleReject() {
+    if (!sub || !rejectReason.trim()) return
+    setActionLoading(true)
+    try {
+      await rejectSubmission(sub.id, rejectReason.trim())
+      setSub({ ...sub, status: 'rejected', rejection_reason: rejectReason.trim() })
+      setActionSuccess('Submission rejected.')
+      setRejectOpen(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to reject')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  if (loading) return <div className="p-8"><LoadingPulse rows={8} /></div>
+  if (error) return <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700 m-8">{error}</div>
+  if (!sub) return null
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-4">
+          {sub.icon ? (
+            <img src={sub.icon} alt={sub.name} className="w-16 h-16 rounded-xl border border-gray-200 object-contain bg-white" />
+          ) : (
+            <div className="w-16 h-16 rounded-xl border border-gray-200 bg-gray-100 flex items-center justify-center text-gray-400">
+              <Package size={28} />
+            </div>
+          )}
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{sub.name}</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <code className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-500">{sub.app_id}</code>
+              <StatusBadge status={sub.status} />
+            </div>
+          </div>
+        </div>
+        <Link to="/admin/submissions" className="text-sm text-gray-500 hover:text-gray-700 mt-1">
+          ← Back
+        </Link>
+      </div>
+
+      {actionSuccess && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-green-700 text-sm flex items-center gap-2">
+          <CheckCircle size={16} />
+          {actionSuccess}
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Main */}
+        <div className="lg:col-span-2 space-y-6">
+          {sub.summary && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h2 className="font-semibold text-gray-900 mb-2">Summary</h2>
+              <p className="text-gray-600 text-sm">{sub.summary}</p>
+            </div>
+          )}
+
+          {sub.description && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h2 className="font-semibold text-gray-900 mb-2">Description</h2>
+              <p className="text-gray-600 text-sm whitespace-pre-wrap">{sub.description}</p>
+            </div>
+          )}
+
+          {sub.categories.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h2 className="font-semibold text-gray-900 mb-3">Categories</h2>
+              <div className="flex flex-wrap gap-2">
+                {sub.categories.map(cat => (
+                  <span key={cat} className="bg-indigo-50 text-indigo-700 text-xs px-3 py-1 rounded-full font-medium">{cat}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sub.screenshots.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h2 className="font-semibold text-gray-900 mb-3">Screenshots</h2>
+              <div className="grid grid-cols-2 gap-3">
+                {sub.screenshots.map((ss, i) => (
+                  <div key={i} className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                    <img src={ss.url} alt={ss.caption ?? `Screenshot ${i + 1}`} className="w-full object-cover" />
+                    {ss.caption && <p className="text-xs text-gray-500 px-2 py-1">{ss.caption}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sub.rejection_reason && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <h2 className="font-semibold text-red-800 mb-2">Rejection Reason</h2>
+              <p className="text-red-700 text-sm">{sub.rejection_reason}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-5">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <h2 className="font-semibold text-gray-900 mb-4">Submission Info</h2>
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-gray-400 text-xs mb-0.5">Developer (user ID)</dt>
+                <dd className="font-medium text-gray-700">{sub.user_id}</dd>
               </div>
               <div>
-                <p className="font-medium text-gray-900">{item.text}</p>
-                <p className="text-gray-400 text-sm">{item.time}</p>
+                <dt className="text-gray-400 text-xs mb-0.5">App Type</dt>
+                <dd className="font-medium text-gray-700">{sub.app_type}</dd>
+              </div>
+              {sub.license && (
+                <div>
+                  <dt className="text-gray-400 text-xs mb-0.5">License</dt>
+                  <dd className="font-medium text-gray-700">{sub.license}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-gray-400 text-xs mb-0.5">Submitted</dt>
+                <dd className="font-medium text-gray-700">{fmtDate(sub.submitted_at)}</dd>
+              </div>
+              {sub.reviewed_at && (
+                <div>
+                  <dt className="text-gray-400 text-xs mb-0.5">Reviewed</dt>
+                  <dd className="font-medium text-gray-700">{fmtDate(sub.reviewed_at)}</dd>
+                </div>
+              )}
+              {sub.homepage && (
+                <div>
+                  <dt className="text-gray-400 text-xs mb-0.5">Homepage</dt>
+                  <dd>
+                    <a href={sub.homepage} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-xs flex items-center gap-1">
+                      {sub.homepage} <ExternalLink size={10} />
+                    </a>
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+
+          {sub.status === 'pending' && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
+              <h2 className="font-semibold text-gray-900">Actions</h2>
+              <button
+                onClick={handleApprove}
+                disabled={actionLoading}
+                className="w-full bg-green-600 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+              >
+                <CheckCircle size={16} />
+                {actionLoading ? 'Processing…' : 'Approve'}
+              </button>
+              <button
+                onClick={() => setRejectOpen(!rejectOpen)}
+                disabled={actionLoading}
+                className="w-full bg-red-600 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+              >
+                <XCircle size={16} />
+                Reject
+              </button>
+
+              {rejectOpen && (
+                <div className="space-y-2">
+                  <textarea
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    placeholder="Reason for rejection…"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+                  />
+                  <button
+                    onClick={handleReject}
+                    disabled={actionLoading || !rejectReason.trim()}
+                    className="w-full bg-red-700 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-red-800 disabled:opacity-50 transition-colors"
+                  >
+                    {actionLoading ? 'Submitting…' : 'Confirm Rejection'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Review Queue Page ─────────────────────────────────────────────────────────
+
+export const ReviewQueuePage: React.FC = () => {
+  const [submissions, setSubmissions] = useState<AppSubmission[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [actionId, setActionId] = useState<number | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listAdminSubmissions('pending')
+      setSubmissions(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load queue')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleApprove(id: number) {
+    setActionId(id)
+    try {
+      await approveSubmission(id)
+      setSubmissions(prev => prev.filter(s => s.id !== id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to approve')
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Review Queue</h1>
+          <p className="text-gray-500 text-sm">Pending apps awaiting review.</p>
+        </div>
+        <button onClick={load} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700">
+          <RefreshCw size={16} />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+      )}
+
+      {loading ? (
+        <LoadingPulse rows={6} />
+      ) : submissions.length === 0 ? (
+        <EmptyState
+          icon={<CheckCircle size={48} />}
+          title="Queue is empty"
+          desc="All submissions have been reviewed. Nice work!"
+        />
+      ) : (
+        <div className="space-y-4">
+          {submissions.map(sub => (
+            <div key={sub.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="font-semibold text-gray-900">{sub.name}</div>
+                  <div className="text-xs text-gray-400 font-mono mt-0.5">{sub.app_id}</div>
+                  <div className="text-xs text-gray-400 mt-1">Submitted {fmtDate(sub.submitted_at)}</div>
+                  {sub.summary && (
+                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">{sub.summary}</p>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Link
+                    to={`/admin/submissions/${sub.id}`}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    View
+                  </Link>
+                  <button
+                    onClick={() => handleApprove(sub.id)}
+                    disabled={actionId === sub.id}
+                    className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >
+                    {actionId === sub.id ? '…' : 'Approve'}
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Review History Page ───────────────────────────────────────────────────────
+
+export const ReviewHistoryPage: React.FC = () => {
+  const [submissions, setSubmissions] = useState<AppSubmission[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    listAdminSubmissions()
+      .then(data => setSubmissions(data.filter(s => s.status !== 'pending')))
+      .catch(e => setError(e instanceof Error ? e.message : 'Failed to load history'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Review History</h1>
+        <p className="text-gray-500 text-sm">All reviewed submissions.</p>
       </div>
-    </div>
-  )
-}
 
-// --- Analytics ---
-export const AnalyticsPage: React.FC = () => {
-  return (
-    <div>
-      <h1 className="text-3xl font-bold mb-10">App Performance Overview</h1>
-      <section className="mb-12">
-        <h2 className="text-xl font-bold mb-6">Install Trends</h2>
-        <div className="card h-80">
-          <p className="text-gray-600 font-medium">App Installs Over Time</p>
-          <h3 className="text-4xl font-bold mb-1">—</h3>
-          <p className="text-sm text-green-500 font-medium mb-4">Live data coming soon</p>
-          <div className="h-40 flex items-end justify-between px-2 gap-4">
-            {[20, 40, 30, 60, 50, 90, 70].map((h, i) => (
-              <div key={i} className="w-full relative h-full overflow-visible">
-                <svg viewBox="0 0 100 100" className="absolute bottom-0 w-full h-full" preserveAspectRatio="none">
-                  <path d={`M0,100 Q50,${100 - h} 100,100`} fill="none" stroke="#6b7280" strokeWidth="2" />
-                </svg>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between text-xs text-gray-400 mt-2 border-t pt-2">
-            <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span>
-          </div>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-// --- Login Page ---
-export const LoginPage: React.FC = () => {
-  return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <header className="px-8 py-6 border-b border-gray-100 flex items-center gap-3">
-        <div className="text-2xl font-bold">*</div>
-        <div className="font-bold text-lg">App Store Admin</div>
-      </header>
-      <main className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-md p-8">
-          <h1 className="text-3xl font-bold text-center mb-12">Welcome back</h1>
-          <form className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">Email</label>
-              <input type="email" className="input-field bg-gray-50 border-gray-100 py-3.5" placeholder="Enter your email" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">Password</label>
-              <input type="password" className="input-field bg-gray-50 border-gray-100 py-3.5" placeholder="Enter your password" />
-            </div>
-            <div className="text-center">
-              <button type="button" className="text-sm text-gray-400 hover:text-gray-600">Forgot password?</button>
-            </div>
-            <button className="w-full bg-brand-dark text-white py-4 rounded-xl font-medium hover:opacity-90 transition">Log in</button>
-          </form>
-        </div>
-      </main>
-    </div>
-  )
-}
-
-// --- Submission Details ---
-export const SubmissionDetailsPage: React.FC = () => {
-  return (
-    <div>
-      <div className="text-sm text-gray-500 mb-4 font-light">Submissions / In Review / App Details</div>
-      <h1 className="text-3xl font-bold mb-2">App Submission Details</h1>
-      <p className="text-gray-500 mb-12 font-light">Review the app submission and provide feedback.</p>
-      <section className="mb-12">
-        <h2 className="text-xl font-bold mb-6 pb-2">App Information</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-10 gap-x-12 max-w-4xl border-t border-gray-200 pt-6">
-          <div><h3 className="text-xs text-gray-400 mb-1 uppercase tracking-wide">App Name</h3><p className="font-medium text-gray-900">Streamer Pro</p></div>
-          <div><h3 className="text-xs text-gray-400 mb-1 uppercase tracking-wide">Version</h3><p className="font-medium text-gray-900">1.2.3</p></div>
-          <div><h3 className="text-xs text-gray-400 mb-1 uppercase tracking-wide">Category</h3><p className="font-medium text-gray-900">Entertainment</p></div>
-          <div><h3 className="text-xs text-gray-400 mb-1 uppercase tracking-wide">Developer</h3><p className="font-medium text-gray-900">Tech Innovators Inc.</p></div>
-        </div>
-      </section>
-      <section>
-        <h2 className="text-xl font-bold mb-6">Reviewer Actions</h2>
-        <div className="h-48 bg-gray-50 border border-dashed border-gray-300 rounded-lg" />
-      </section>
-    </div>
-  )
-}
-
-// --- Ratings & Reviews ---
-export const RatingsReviewsPage: React.FC = () => {
-  return (
-    <div>
-      <div className="mb-10">
-        <h1 className="text-3xl font-bold mb-2">Ratings & Reviews</h1>
-        <p className="text-gray-500 font-light">Manage and respond to user feedback for your apps.</p>
-      </div>
-      <section>
-        <h2 className="text-xl font-bold mb-6">Reviews</h2>
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-          <table className="w-full text-left min-w-[500px]">
-            <thead className="bg-gray-50 border-b">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        {error ? (
+          <div className="p-6 text-red-700">{error}</div>
+        ) : loading ? (
+          <div className="p-6"><LoadingPulse rows={6} /></div>
+        ) : submissions.length === 0 ? (
+          <EmptyState
+            icon={<FileText size={40} />}
+            title="No reviewed submissions"
+            desc="Reviewed submissions will appear here."
+          />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="p-4 pl-6 text-sm font-medium text-gray-900">App</th>
-                <th className="p-4 text-sm font-medium text-gray-900 hidden sm:table-cell">User</th>
-                <th className="p-4 text-sm font-medium text-gray-900">Rating</th>
-                <th className="p-4 text-sm font-medium text-gray-900 w-2/5 hidden md:table-cell">Comment</th>
-                <th className="p-4 text-sm font-medium text-gray-900 hidden sm:table-cell">Date</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">App Name</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Developer</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Reviewed</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Reason</th>
               </tr>
             </thead>
-            <tbody>
-              {reviewsData.map((item) => (
-                <tr key={item.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="p-4 pl-6 font-medium text-gray-800">{item.app}</td>
-                  <td className="p-4 text-gray-500 hidden sm:table-cell">{item.user}</td>
-                  <td className="p-4 text-gray-500">{item.rating}</td>
-                  <td className="p-4 text-gray-500 text-sm hidden md:table-cell">{item.comment}</td>
-                  <td className="p-4 text-gray-500 text-sm hidden sm:table-cell">{item.date}</td>
+            <tbody className="divide-y divide-gray-100">
+              {submissions.map(sub => (
+                <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-3 font-medium text-gray-900">
+                    <Link to={`/admin/submissions/${sub.id}`} className="hover:text-indigo-600">{sub.name}</Link>
+                  </td>
+                  <td className="px-6 py-3 text-gray-500">User {sub.user_id}</td>
+                  <td className="px-6 py-3"><StatusBadge status={sub.status} /></td>
+                  <td className="px-6 py-3 text-gray-500">{fmtDate(sub.reviewed_at)}</td>
+                  <td className="px-6 py-3 text-gray-500 max-w-xs truncate">{sub.rejection_reason ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
+        )}
+      </div>
     </div>
   )
 }
 
-// --- Reset Password ---
-export const ResetPasswordPage: React.FC = () => {
-  return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <header className="px-8 py-6 border-b border-gray-100 flex items-center justify-between">
-        <div className="text-xl font-bold flex items-center gap-3">
-          <div className="flex gap-0.5">
-            <div className="w-1.5 h-4 bg-black rounded-full" />
-            <div className="w-1.5 h-4 bg-black rounded-full" />
-            <div className="w-1.5 h-4 bg-black rounded-full" />
-          </div>
-          App Store
-        </div>
-        <nav className="flex gap-6 text-sm font-medium items-center text-gray-600">
-          <Link to="/admin/dashboard">Dashboard</Link>
-          <Link to="#">Apps</Link>
-        </nav>
-      </header>
-      <main className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-lg p-8">
-          <h1 className="text-3xl font-bold text-center mb-8">Reset your password</h1>
-          <form className="space-y-6">
-            <input type="email" className="input-field bg-gray-100 border-transparent py-4 text-center text-lg" placeholder="Email" />
-            <button className="w-full bg-black text-white py-4 rounded-lg font-medium hover:opacity-90 transition">Send reset link</button>
-            <div className="text-center">
-              <span className="text-gray-500">Remember your password? </span>
-              <Link to="/login" className="text-gray-900 font-medium hover:underline">Sign in</Link>
-            </div>
-          </form>
-        </div>
-      </main>
-    </div>
-  )
-}
+// ── Analytics Page ────────────────────────────────────────────────────────────
 
-// --- Developer Portal ---
-export const DeveloperPortalPage: React.FC = () => {
-  const [apiKey, setApiKey] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('admin_api_key') || '' : ''))
-  const [apiKeySaved, setApiKeySaved] = useState(typeof window !== 'undefined' && !!localStorage.getItem('admin_api_key'))
+export const AnalyticsPage: React.FC = () => {
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null)
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const [regAppId, setRegAppId] = useState('')
-  const [regDevName, setRegDevName] = useState('')
-  const [regDevEmail, setRegDevEmail] = useState('')
-  const [regLoading, setRegLoading] = useState(false)
-  const [regResult, setRegResult] = useState<string | null>(null)
-  const [regError, setRegError] = useState<string | null>(null)
+  useEffect(() => {
+    Promise.all([
+      getStats().catch(() => null),
+      getAdminStats().catch(() => null),
+    ]).then(([ps, as]) => {
+      setPlatformStats(ps)
+      setAdminStats(as)
+    }).finally(() => setLoading(false))
+  }, [])
 
-  const [tokenDevName, setTokenDevName] = useState('')
-  const [tokenRole, setTokenRole] = useState<'developer' | 'admin'>('developer')
-  const [tokenAppId, setTokenAppId] = useState('')
-  const [tokenLoading, setTokenLoading] = useState(false)
-  const [tokenResult, setTokenResult] = useState<TokenResponse | null>(null)
-  const [tokenError, setTokenError] = useState<string | null>(null)
-  const [copied, setCopied] = useState<string | null>(null)
+  const bars = adminStats
+    ? [
+        { label: 'Approved', value: adminStats.approved_submissions, max: adminStats.total_submissions || 1, color: 'bg-green-500' },
+        { label: 'Pending', value: adminStats.pending_submissions, max: adminStats.total_submissions || 1, color: 'bg-amber-400' },
+        { label: 'Rejected', value: adminStats.rejected_submissions, max: adminStats.total_submissions || 1, color: 'bg-red-500' },
+      ]
+    : []
 
-  function saveApiKey() {
-    localStorage.setItem('admin_api_key', apiKey)
-    setApiKeySaved(true)
-  }
-
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault()
-    setRegLoading(true)
-    setRegResult(null)
-    setRegError(null)
-    try {
-      const res = await registerApp(regAppId, regDevName, regDevEmail || undefined)
-      setRegResult(`✓ Registered: ${res.app_id}`)
-      setRegAppId('')
-    } catch (err: any) {
-      setRegError(err.message)
-    } finally {
-      setRegLoading(false)
-    }
-  }
-
-  async function handleIssueToken(e: React.FormEvent) {
-    e.preventDefault()
-    setTokenLoading(true)
-    setTokenResult(null)
-    setTokenError(null)
-    try {
-      const res = await issueDeveloperToken(
-        { developer_name: tokenDevName, role: tokenRole, app_id: tokenRole === 'developer' ? tokenAppId : undefined },
-        apiKey
-      )
-      setTokenResult(res)
-    } catch (err: any) {
-      setTokenError(err.message)
-    } finally {
-      setTokenLoading(false)
-    }
-  }
-
-  function copyToClipboard(text: string, key: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(key)
-      setTimeout(() => setCopied(null), 2000)
-    })
-  }
+  const bigNumbers = [
+    { label: 'Total Apps', value: platformStats?.total_apps ?? adminStats?.total_apps ?? '—' },
+    { label: 'Total Users', value: platformStats?.total_users ?? adminStats?.total_users ?? '—' },
+    { label: 'Categories', value: platformStats?.total_categories ?? '—' },
+    { label: 'Submissions', value: adminStats?.total_submissions ?? '—' },
+  ]
 
   return (
-    <div className="max-w-3xl">
-      <h1 className="text-3xl font-bold mb-2">Developer Portal</h1>
-      <p className="text-gray-500 mb-10">Register apps and issue Flatpak publishing tokens for developers.</p>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Analytics</h1>
+        <p className="text-gray-500 text-sm">Platform statistics and submission metrics.</p>
+      </div>
 
-      <section className="mb-10 bg-gray-50 rounded-xl p-6 border border-gray-200">
-        <h2 className="text-lg font-bold mb-4">Admin API Key</h2>
-        <p className="text-sm text-gray-500 mb-4">Required for issuing tokens and viewing pending apps. Stored locally in your browser.</p>
-        <div className="flex gap-3">
-          <input
-            type="password"
-            className="input-field flex-1"
-            placeholder="Enter admin API key"
-            value={apiKey}
-            onChange={(e) => { setApiKey(e.target.value); setApiKeySaved(false) }}
-          />
-          <button onClick={saveApiKey} className="bg-brand-dark text-white px-5 py-2 rounded-lg text-sm font-medium whitespace-nowrap">
-            {apiKeySaved ? <><CheckCircle className="inline mr-1" size={14} />Saved</> : 'Save Key'}
-          </button>
-        </div>
-      </section>
+      {loading ? (
+        <LoadingPulse rows={4} />
+      ) : (
+        <>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {bigNumbers.map(n => (
+              <div key={n.label} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <div className="text-4xl font-bold text-gray-900 mb-1">{n.value}</div>
+                <div className="text-sm text-gray-500">{n.label}</div>
+              </div>
+            ))}
+          </div>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-6">Register New App</h2>
-        <form onSubmit={handleRegister} className="space-y-4 max-w-lg">
-          <div>
-            <label className="block text-sm font-medium mb-1.5 text-gray-700">App ID (Flatpak reverse-domain)</label>
-            <input type="text" className="input-field" placeholder="com.example.MyApp" value={regAppId} onChange={(e) => setRegAppId(e.target.value)} required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5 text-gray-700">Developer Name</label>
-            <input type="text" className="input-field" placeholder="Jane Developer" value={regDevName} onChange={(e) => setRegDevName(e.target.value)} required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5 text-gray-700">Developer Email (optional)</label>
-            <input type="email" className="input-field" placeholder="jane@example.com" value={regDevEmail} onChange={(e) => setRegDevEmail(e.target.value)} />
-          </div>
-          {regResult && <p className="text-green-600 text-sm font-medium">{regResult}</p>}
-          {regError && <p className="text-red-600 text-sm flex items-center gap-1"><AlertCircle size={14} />{regError}</p>}
-          <button type="submit" disabled={regLoading} className="bg-brand-dark text-white px-6 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
-            {regLoading ? <><Loader className="inline animate-spin mr-1" size={14} />Registering…</> : 'Register App'}
-          </button>
-        </form>
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-2">Issue Publishing Token</h2>
-        <p className="text-sm text-gray-500 mb-6">Generates a flat-manager JWT token for a developer to publish Flatpak apps.</p>
-        <form onSubmit={handleIssueToken} className="space-y-4 max-w-lg">
-          <div>
-            <label className="block text-sm font-medium mb-1.5 text-gray-700">Developer Name</label>
-            <input type="text" className="input-field" placeholder="Jane Developer" value={tokenDevName} onChange={(e) => setTokenDevName(e.target.value)} required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5 text-gray-700">Role</label>
-            <select className="input-field" value={tokenRole} onChange={(e) => setTokenRole(e.target.value as 'developer' | 'admin')}>
-              <option value="developer">Developer (scoped to one app)</option>
-              <option value="admin">Admin (all apps + publish)</option>
-            </select>
-          </div>
-          {tokenRole === 'developer' && (
-            <div>
-              <label className="block text-sm font-medium mb-1.5 text-gray-700">App ID</label>
-              <input type="text" className="input-field" placeholder="com.example.MyApp" value={tokenAppId} onChange={(e) => setTokenAppId(e.target.value)} required />
+          {adminStats && adminStats.total_submissions > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h2 className="font-semibold text-gray-900 mb-6">Submissions Breakdown</h2>
+              <div className="space-y-4">
+                {bars.map(bar => {
+                  const pct = Math.round((bar.value / bar.max) * 100)
+                  return (
+                    <div key={bar.label}>
+                      <div className="flex justify-between text-sm mb-1.5">
+                        <span className="font-medium text-gray-700">{bar.label}</span>
+                        <span className="text-gray-500">{bar.value} ({pct}%)</span>
+                      </div>
+                      <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${bar.color} transition-all`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
-          {tokenError && <p className="text-red-600 text-sm flex items-center gap-1"><AlertCircle size={14} />{tokenError}</p>}
-          <button type="submit" disabled={tokenLoading || !apiKeySaved} className="bg-brand-dark text-white px-6 py-2 rounded-lg text-sm font-medium disabled:opacity-50" title={!apiKeySaved ? 'Save your API key first' : ''}>
-            {tokenLoading ? <><Loader className="inline animate-spin mr-1" size={14} />Generating…</> : 'Generate Token'}
-          </button>
-        </form>
+        </>
+      )}
+    </div>
+  )
+}
 
-        {tokenResult && (
-          <div className="mt-8 space-y-4">
-            <div className="bg-green-50 border border-green-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-bold text-green-800">Token Generated</h3>
-                <button onClick={() => copyToClipboard(tokenResult.token, 'token')} className="text-xs text-green-700 flex items-center gap-1 hover:underline">
-                  {copied === 'token' ? <><CheckCircle size={12} />Copied!</> : <><Copy size={12} />Copy token</>}
-                </button>
-              </div>
-              <code className="block bg-white border border-green-100 rounded-lg p-3 text-xs font-mono break-all text-gray-800">
-                {tokenResult.token}
-              </code>
+// ── System Health Page ────────────────────────────────────────────────────────
+
+export const SystemHealthPage: React.FC = () => {
+  const [health, setHealth] = useState<{ status: string; service: string; version: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [lastChecked, setLastChecked] = useState<Date | null>(null)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const h = await getHealth()
+      setHealth(h)
+      setLastChecked(new Date())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Health check failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  const isOk = health?.status === 'ok' || health?.status === 'healthy'
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">System Health</h1>
+          <p className="text-gray-500 text-sm">API service status.</p>
+        </div>
+        <button
+          onClick={refresh}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-3 h-3 rounded-full bg-red-500" />
+            <span className="font-semibold text-red-800">Service Unavailable</span>
+          </div>
+          <p className="text-red-700 text-sm">{error}</p>
+        </div>
+      )}
+
+      {health && (
+        <div className={`rounded-xl border shadow-sm p-6 ${isOk ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-4 h-4 rounded-full ${isOk ? 'bg-green-500' : 'bg-yellow-400'}`} />
+            <span className={`font-semibold text-lg ${isOk ? 'text-green-800' : 'text-yellow-800'}`}>
+              {isOk ? 'All Systems Operational' : 'Degraded'}
+            </span>
+          </div>
+          <dl className="grid sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt className="text-gray-500 text-xs mb-0.5">Status</dt>
+              <dd className="font-semibold text-gray-800 capitalize">{health.status}</dd>
             </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-bold text-gray-800">Publishing Instructions</h3>
-                <button onClick={() => copyToClipboard(tokenResult.instructions, 'instructions')} className="text-xs text-gray-600 flex items-center gap-1 hover:underline">
-                  {copied === 'instructions' ? <><CheckCircle size={12} />Copied!</> : <><Copy size={12} />Copy all</>}
-                </button>
-              </div>
-              <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap leading-relaxed overflow-x-auto">
-                {tokenResult.instructions}
-              </pre>
+            <div>
+              <dt className="text-gray-500 text-xs mb-0.5">Service</dt>
+              <dd className="font-semibold text-gray-800">{health.service}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500 text-xs mb-0.5">Version</dt>
+              <dd className="font-semibold text-gray-800">{health.version}</dd>
+            </div>
+          </dl>
+          {lastChecked && (
+            <p className="text-xs text-gray-400 mt-4">Last checked: {lastChecked.toLocaleTimeString()}</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Developer Portal Page ─────────────────────────────────────────────────────
+
+export const DeveloperPortalPage: React.FC = () => {
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [ghToken, setGhToken] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
+
+  // Agreement
+  const [agreementLoading, setAgreementLoading] = useState(false)
+
+  // Keys
+  const [keys, setKeys] = useState<DevKey[]>([])
+  const [keysLoading, setKeysLoading] = useState(false)
+  const [newKeyName, setNewKeyName] = useState('')
+  const [createdKey, setCreatedKey] = useState<{ token: string; name: string } | null>(null)
+  const [keyCreateLoading, setKeyCreateLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  // Submit app
+  const [categories, setCategories] = useState<{ name: string; description: string }[]>([])
+  const [submitForm, setSubmitForm] = useState({
+    app_id: '',
+    name: '',
+    summary: '',
+    description: '',
+    icon: '',
+    homepage: '',
+    license: '',
+    app_type: 'desktop',
+    categories: [] as string[],
+    screenshots: [] as { url: string; caption: string }[],
+  })
+  const [submitLoading, setSubmitLoading] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState(false)
+  const [screenshotUrl, setScreenshotUrl] = useState('')
+
+  // My submissions
+  const [mySubs, setMySubs] = useState<AppSubmission[]>([])
+  const [mySubsLoading, setMySubsLoading] = useState(false)
+
+  const { user: storedAuthUser, setUser: setStoredUser, token } = useAuthStore()
+
+  const loadUser = useCallback(async () => {
+    if (!token) { setAuthLoading(false); return }
+    if (storedAuthUser) { setUser(storedAuthUser); setAuthLoading(false); return }
+    try {
+      const u = await getAuthUser()
+      setUser(u)
+      setStoredUser(u)
+    } catch {
+      setUser(null)
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [token, storedAuthUser])
+
+  const loadKeys = useCallback(async () => {
+    setKeysLoading(true)
+    try { setKeys(await listDevKeys()) }
+    catch { /* ignore */ }
+    finally { setKeysLoading(false) }
+  }, [])
+
+  const loadMySubs = useCallback(async () => {
+    setMySubsLoading(true)
+    try { setMySubs(await listMySubmissions()) }
+    catch { /* ignore */ }
+    finally { setMySubsLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    loadUser()
+    getCategories().then(setCategories).catch(() => [])
+  }, [loadUser])
+
+  useEffect(() => {
+    if (user) { loadKeys(); loadMySubs() }
+  }, [user, loadKeys, loadMySubs])
+
+  async function handleGhLogin() {
+    if (!ghToken.trim()) return
+    setLoginLoading(true)
+    setLoginError(null)
+    try {
+      const res = await loginGitHub(ghToken.trim())
+      setToken(res.access_token)
+      const u = await getAuthUser()
+      setUser(u)
+    } catch (e) {
+      setLoginError(e instanceof Error ? e.message : 'Login failed')
+    } finally {
+      setLoginLoading(false)
+    }
+  }
+
+  async function handleAcceptAgreement() {
+    setAgreementLoading(true)
+    try {
+      await acceptPublisherAgreement()
+      setUser(prev => prev ? { ...prev, accepted_publisher_agreement: true } : prev)
+    } catch { /* ignore */ }
+    finally { setAgreementLoading(false) }
+  }
+
+  async function handleCreateKey() {
+    if (!newKeyName.trim()) return
+    setKeyCreateLoading(true)
+    try {
+      const k = await createDevKey(newKeyName.trim())
+      setCreatedKey({ token: k.token, name: k.name })
+      setNewKeyName('')
+      loadKeys()
+    } catch { /* ignore */ }
+    finally { setKeyCreateLoading(false) }
+  }
+
+  async function handleRevokeKey(id: number) {
+    try {
+      await revokeDevKey(id)
+      setKeys(prev => prev.filter(k => k.id !== id))
+    } catch { /* ignore */ }
+  }
+
+  function handleCopy(text: string) {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  function toggleCategory(cat: string) {
+    setSubmitForm(prev => ({
+      ...prev,
+      categories: prev.categories.includes(cat)
+        ? prev.categories.filter(c => c !== cat)
+        : [...prev.categories, cat],
+    }))
+  }
+
+  function addScreenshot() {
+    if (!screenshotUrl.trim()) return
+    setSubmitForm(prev => ({
+      ...prev,
+      screenshots: [...prev.screenshots, { url: screenshotUrl.trim(), caption: '' }],
+    }))
+    setScreenshotUrl('')
+  }
+
+  async function handleSubmitApp() {
+    setSubmitLoading(true)
+    setSubmitError(null)
+    setSubmitSuccess(false)
+    try {
+      await submitApp({
+        ...submitForm,
+        screenshots: submitForm.screenshots.map(s => ({ url: s.url, caption: s.caption || undefined })),
+      })
+      setSubmitSuccess(true)
+      setSubmitForm({
+        app_id: '', name: '', summary: '', description: '', icon: '',
+        homepage: '', license: '', app_type: 'desktop', categories: [], screenshots: [],
+      })
+      loadMySubs()
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Submission failed')
+    } finally {
+      setSubmitLoading(false)
+    }
+  }
+
+  if (authLoading) return <div className="p-8"><LoadingPulse rows={4} /></div>
+
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto mt-8">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Sign in to Developer Portal</h2>
+          <p className="text-gray-500 text-sm mb-6">Enter your GitHub Personal Access Token to continue.</p>
+
+          <div className="space-y-3">
+            <input
+              type="password"
+              value={ghToken}
+              onChange={e => setGhToken(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleGhLogin()}
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {loginError && <p className="text-red-600 text-sm">{loginError}</p>}
+            <button
+              onClick={handleGhLogin}
+              disabled={loginLoading || !ghToken.trim()}
+              className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {loginLoading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8 max-w-4xl">
+      {/* Welcome */}
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+          <Users className="text-indigo-600" size={22} />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Welcome, {user.display_name}</h1>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium capitalize">{user.role}</span>
+            {user.email && <span className="text-xs text-gray-400">{user.email}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Publisher agreement */}
+      {!user.accepted_publisher_agreement && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="text-amber-600 mt-0.5 shrink-0" size={20} />
+            <div>
+              <h3 className="font-semibold text-amber-900 mb-1">Publisher Agreement Required</h3>
+              <p className="text-amber-700 text-sm mb-3">
+                You must accept the Publisher Agreement before submitting apps to the AGL App Store.
+              </p>
+              <button
+                onClick={handleAcceptAgreement}
+                disabled={agreementLoading}
+                className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                {agreementLoading ? 'Accepting…' : 'Accept Publisher Agreement'}
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* API Keys */}
+      <section className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Key size={18} /> API Keys</h2>
+        </div>
+        <div className="p-6 space-y-4">
+          {createdKey && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <p className="text-green-800 text-sm font-semibold mb-2">New key created: {createdKey.name}</p>
+              <p className="text-green-700 text-xs mb-2">This token is shown only once. Copy it now.</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 bg-white border border-green-200 rounded px-3 py-1.5 text-xs font-mono break-all">{createdKey.token}</code>
+                <button
+                  onClick={() => handleCopy(createdKey.token)}
+                  className="p-2 rounded-lg border border-green-200 text-green-700 hover:bg-green-100"
+                >
+                  {copied ? <CheckCircle size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+              <button onClick={() => setCreatedKey(null)} className="text-xs text-green-600 hover:underline mt-2">Dismiss</button>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newKeyName}
+              onChange={e => setNewKeyName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateKey()}
+              placeholder="Key name (e.g. CI/CD)"
+              className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              onClick={handleCreateKey}
+              disabled={keyCreateLoading || !newKeyName.trim()}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+            >
+              <Plus size={14} />
+              Create
+            </button>
+          </div>
+
+          {keysLoading ? (
+            <LoadingPulse rows={3} />
+          ) : keys.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No API keys yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Prefix</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Created</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Last Used</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {keys.map(k => (
+                  <tr key={k.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{k.name}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{k.prefix}…</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${k.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {k.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(k.created_at)}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(k.last_used_at)}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        onClick={() => handleRevokeKey(k.id)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                        title="Revoke key"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </section>
+
+      {/* Submit App */}
+      <section className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Package size={18} /> Submit App</h2>
+        </div>
+        <div className="p-6 space-y-5">
+          {submitSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700 text-sm flex items-center gap-2">
+              <CheckCircle size={16} /> App submitted successfully! It's now pending review.
+            </div>
+          )}
+          {submitError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{submitError}</div>
+          )}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">App ID <span className="text-red-500">*</span></label>
+              <input
+                value={submitForm.app_id}
+                onChange={e => setSubmitForm(p => ({ ...p, app_id: e.target.value }))}
+                placeholder="com.example.MyApp"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Name <span className="text-red-500">*</span></label>
+              <input
+                value={submitForm.name}
+                onChange={e => setSubmitForm(p => ({ ...p, name: e.target.value }))}
+                placeholder="My App"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">App Type <span className="text-red-500">*</span></label>
+              <select
+                value={submitForm.app_type}
+                onChange={e => setSubmitForm(p => ({ ...p, app_type: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                <option value="desktop">Desktop</option>
+                <option value="mobile">Mobile</option>
+                <option value="web">Web</option>
+                <option value="console">Console</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">License</label>
+              <input
+                value={submitForm.license}
+                onChange={e => setSubmitForm(p => ({ ...p, license: e.target.value }))}
+                placeholder="MIT, GPL-3.0, etc."
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Icon URL</label>
+              <input
+                value={submitForm.icon}
+                onChange={e => setSubmitForm(p => ({ ...p, icon: e.target.value }))}
+                placeholder="https://example.com/icon.png"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Homepage</label>
+              <input
+                value={submitForm.homepage}
+                onChange={e => setSubmitForm(p => ({ ...p, homepage: e.target.value }))}
+                placeholder="https://example.com"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Summary</label>
+            <input
+              value={submitForm.summary}
+              onChange={e => setSubmitForm(p => ({ ...p, summary: e.target.value }))}
+              placeholder="Short description of your app"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
+            <textarea
+              value={submitForm.description}
+              onChange={e => setSubmitForm(p => ({ ...p, description: e.target.value }))}
+              placeholder="Full description of your app…"
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
+          </div>
+
+          {categories.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-2">Categories</label>
+              <div className="flex flex-wrap gap-2">
+                {categories.map(cat => (
+                  <button
+                    key={cat.name}
+                    type="button"
+                    onClick={() => toggleCategory(cat.name)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      submitForm.categories.includes(cat.name)
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-2">Screenshots</label>
+            <div className="flex gap-2 mb-2">
+              <input
+                value={screenshotUrl}
+                onChange={e => setScreenshotUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addScreenshot()}
+                placeholder="https://example.com/screenshot.png"
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                onClick={addScreenshot}
+                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 flex items-center gap-1"
+              >
+                <Plus size={14} /> Add
+              </button>
+            </div>
+            {submitForm.screenshots.length > 0 && (
+              <ul className="space-y-1">
+                {submitForm.screenshots.map((ss, i) => (
+                  <li key={i} className="flex items-center gap-2 text-xs text-gray-600">
+                    <span className="flex-1 truncate font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200">{ss.url}</span>
+                    <button
+                      onClick={() => setSubmitForm(p => ({ ...p, screenshots: p.screenshots.filter((_, j) => j !== i) }))}
+                      className="text-red-400 hover:text-red-600"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <button
+            onClick={handleSubmitApp}
+            disabled={submitLoading || !submitForm.app_id || !submitForm.name}
+            className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {submitLoading ? 'Submitting…' : 'Submit App for Review'}
+          </button>
+        </div>
+      </section>
+
+      {/* My Submissions */}
+      <section className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><FileText size={18} /> My Submissions</h2>
+        </div>
+        <div className="p-6">
+          {mySubsLoading ? (
+            <LoadingPulse rows={3} />
+          ) : mySubs.length === 0 ? (
+            <EmptyState
+              icon={<Package size={36} />}
+              title="No submissions yet"
+              desc="Submit your first app above."
+            />
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">App Name</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Submitted</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {mySubs.map(sub => (
+                  <tr key={sub.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{sub.name}</td>
+                    <td className="px-4 py-3"><StatusBadge status={sub.status} /></td>
+                    <td className="px-4 py-3 text-gray-500">{fmtDate(sub.submitted_at)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {sub.status === 'rejected' && (
+                        <span className="text-xs text-red-600 mr-3">
+                          {sub.rejection_reason ? `Reason: ${sub.rejection_reason}` : 'Rejected'}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+// ── Ratings & Reviews Page ────────────────────────────────────────────────────
+
+export const RatingsReviewsPage: React.FC = () => {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Ratings & Reviews</h1>
+        <p className="text-gray-500 text-sm">App ratings and user reviews.</p>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-16 flex flex-col items-center justify-center text-center">
+        <Star size={56} className="text-gray-200 mb-5" strokeWidth={1.5} />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">App Ratings Coming Soon</h2>
+        <p className="text-gray-400 text-sm max-w-sm">
+          User ratings and review management will be available in a future release.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ── Settings Page ─────────────────────────────────────────────────────────────
+
+export const SettingsPage: React.FC = () => {
+  const navigate = useNavigate()
+  const { user: storedUser, setUser: setStoredUser, logout } = useAuthStore()
+  const [user, setUser] = useState<AuthUser | null>(storedUser)
+  const [loading, setLoading] = useState(!storedUser)
+  const [roleInput, setRoleInput] = useState(storedUser?.role ?? '')
+  const [roleLoading, setRoleLoading] = useState(false)
+  const [roleSuccess, setRoleSuccess] = useState(false)
+
+  useEffect(() => {
+    if (!storedUser) {
+      getAuthUser()
+        .then(u => { setUser(u); setStoredUser(u); setRoleInput(u.role) })
+        .catch(() => setUser(null))
+        .finally(() => setLoading(false))
+    }
+  }, [])
+
+  function handleLogout() {
+    logout()
+    navigate('/')
+  }
+
+  async function handleRoleChange() {
+    if (!user) return
+    setRoleLoading(true)
+    try {
+      await updateUserRole(user.id, roleInput)
+      setUser(prev => prev ? { ...prev, role: roleInput } : prev)
+      setRoleSuccess(true)
+      setTimeout(() => setRoleSuccess(false), 3000)
+    } catch { /* ignore */ }
+    finally { setRoleLoading(false) }
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Settings</h1>
+        <p className="text-gray-500 text-sm">Account and preferences.</p>
+      </div>
+
+      {loading ? (
+        <LoadingPulse rows={4} />
+      ) : !user ? (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <p className="text-gray-500 text-sm mb-4">You are not signed in.</p>
+          <Link to="/login" className="text-indigo-600 hover:underline text-sm font-medium">Sign in</Link>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">Profile</h2>
+            <dl className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Display name</dt>
+                <dd className="font-medium text-gray-800">{user.display_name}</dd>
+              </div>
+              {user.email && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Email</dt>
+                  <dd className="font-medium text-gray-800">{user.email}</dd>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Role</dt>
+                <dd>
+                  <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-medium capitalize">{user.role}</span>
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">GitHub login</dt>
+                <dd className="font-medium text-gray-800">{user.default_account_login}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Publisher agreement</dt>
+                <dd>{user.accepted_publisher_agreement ? <CheckCircle size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-300" />}</dd>
+              </div>
+            </dl>
+          </div>
+
+          {user.role === 'admin' && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <h2 className="font-semibold text-gray-900 mb-4">Change Role</h2>
+              {roleSuccess && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 text-sm mb-4 flex items-center gap-2">
+                  <CheckCircle size={14} /> Role updated.
+                </div>
+              )}
+              <div className="flex gap-3">
+                <select
+                  value={roleInput}
+                  onChange={e => setRoleInput(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  <option value="admin">admin</option>
+                  <option value="developer">developer</option>
+                  <option value="user">user</option>
+                </select>
+                <button
+                  onClick={handleRoleChange}
+                  disabled={roleLoading || roleInput === user.role}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {roleLoading ? 'Saving…' : 'Update'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">Session</h2>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Reset Password Page (kept for compatibility) ──────────────────────────────
+
+export const VerifyEmailPage: React.FC = () => {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const token = searchParams.get('token')
+  const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'idle'>('idle')
+  const [message, setMessage] = useState('')
+  const [resendEmailVal, setResendEmailVal] = useState('')
+  const [resending, setResending] = useState(false)
+  const [resendMsg, setResendMsg] = useState('')
+
+  useEffect(() => {
+    if (token) {
+      setStatus('loading')
+      verifyEmail(token)
+        .then(res => { setStatus('success'); setMessage(res.message) })
+        .catch(e => { setStatus('error'); setMessage(e.message) })
+    }
+  }, [token])
+
+  async function handleResend() {
+    if (!resendEmailVal.trim()) return
+    setResending(true)
+    try {
+      await resendVerification(resendEmailVal.trim())
+      setResendMsg('Verification email sent!')
+    } catch (e) { setResendMsg(e instanceof Error ? e.message : 'Failed') }
+    finally { setResending(false) }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 w-full max-w-md text-center">
+        {status === 'loading' && (<><RefreshCw size={32} className="animate-spin text-indigo-500 mx-auto mb-4" /><p className="text-gray-600">Verifying your email…</p></>)}
+        {status === 'success' && (
+          <>
+            <div className="text-4xl mb-4">✅</div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Email Verified!</h2>
+            <p className="text-gray-600 mb-6">{message}</p>
+            <button onClick={() => navigate('/login')} className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Sign In</button>
+          </>
+        )}
+        {(status === 'error' || (status === 'idle' && !token)) && (
+          <>
+            {status === 'error' && <><div className="text-4xl mb-4">❌</div><h2 className="text-xl font-bold text-gray-900 mb-2">Verification Failed</h2><p className="text-red-600 text-sm mb-4">{message}</p></>}
+            {status === 'idle' && <><div className="text-4xl mb-4">📧</div><h2 className="text-xl font-bold text-gray-900 mb-2">Verify Your Email</h2><p className="text-gray-600 mb-4">Enter your email to resend the verification link.</p></>}
+            <div className="space-y-2">
+              <input type="email" value={resendEmailVal} onChange={e => setResendEmailVal(e.target.value)} placeholder="you@example.com" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <button onClick={handleResend} disabled={resending || !resendEmailVal.trim()} className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+                {resending ? 'Sending…' : 'Resend Verification'}
+              </button>
+              {resendMsg && <p className="text-sm text-green-600">{resendMsg}</p>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export const UsersPage: React.FC = () => {
+  const [users, setUsers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [trustingId, setTrustingId] = useState<number | null>(null)
+
+  useEffect(() => {
+    listUsers().then(setUsers).catch(e => setError(e.message)).finally(() => setLoading(false))
+  }, [])
+
+  async function handleTrust(userId: number) {
+    setTrustingId(userId)
+    try {
+      await trustPublisher(userId)
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_trusted_publisher: true } : u))
+    } catch (e) { alert(e instanceof Error ? e.message : 'Failed') }
+    finally { setTrustingId(null) }
+  }
+
+  async function handleUntrust(userId: number) {
+    setTrustingId(userId)
+    try {
+      await untrustPublisher(userId)
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_trusted_publisher: false } : u))
+    } catch (e) { alert(e instanceof Error ? e.message : 'Failed') }
+    finally { setTrustingId(null) }
+  }
+
+  if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw size={24} className="animate-spin text-gray-400" /></div>
+  if (error) return <div className="text-red-600 p-4">{error}</div>
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Users</h1>
+        <p className="text-gray-500 text-sm mt-1">{users.length} registered users</p>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Apps</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Publisher</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {users.map(user => (
+              <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                <td className="px-4 py-3">
+                  <div className="font-medium text-gray-900 text-sm">{user.display_name}</div>
+                  <div className="text-xs text-gray-400">#{user.id} · {user.auth_provider || 'github'}</div>
+                </td>
+                <td className="px-4 py-3">
+                  {user.email ? (
+                    <div>
+                      <div className="text-sm text-gray-700 flex items-center gap-1">
+                        {user.email}
+                        {user.email_verified
+                          ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">verified</span>
+                          : <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">unverified</span>}
+                      </div>
+                      {user.is_organization_email && <div className="text-xs text-indigo-600 mt-0.5">🏢 {user.organization_domain}</div>}
+                    </div>
+                  ) : <span className="text-xs text-gray-400">—</span>}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${user.role === 'admin' ? 'bg-red-100 text-red-700' : user.role === 'publisher' ? 'bg-blue-100 text-blue-700' : user.role === 'reviewer' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>{user.role || 'user'}</span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600">{user.app_count ?? 0}</td>
+                <td className="px-4 py-3">
+                  {user.is_trusted_publisher
+                    ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">✓ Trusted</span>
+                    : <span className="text-xs text-gray-400">—</span>}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {user.is_trusted_publisher
+                    ? <button onClick={() => handleUntrust(user.id)} disabled={trustingId === user.id} className="text-xs px-3 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">{trustingId === user.id ? '…' : 'Revoke Trust'}</button>
+                    : <button onClick={() => handleTrust(user.id)} disabled={trustingId === user.id} className="text-xs px-3 py-1 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 transition-colors">{trustingId === user.id ? '…' : 'Trust Publisher'}</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {users.length === 0 && <div className="text-center py-12 text-gray-400">No users found.</div>}
+      </div>
+    </div>
+  )
+}
+
+export const ResetPasswordPage: React.FC = () => {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const token = searchParams.get('token')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  async function handleReset() {
+    if (!password.trim()) return
+    if (password !== confirm) { setError('Passwords do not match'); return }
+    if (!token) { setError('Invalid reset link'); return }
+    setLoading(true); setError(null)
+    try {
+      await resetPasswordApi(token, password)
+      setSuccess(true)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Reset failed') }
+    finally { setLoading(false) }
+  }
+
+  if (!token) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 w-full max-w-md text-center">
+        <div className="text-4xl mb-4">❌</div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Invalid Link</h2>
+        <p className="text-gray-600 mb-4">This password reset link is invalid or has expired.</p>
+        <Link to="/login" className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Back to Login</Link>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 w-full max-w-md">
+        {success ? (
+          <div className="text-center">
+            <div className="text-4xl mb-4">✅</div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Password Reset!</h2>
+            <p className="text-gray-600 mb-6">Your password has been updated successfully.</p>
+            <button onClick={() => navigate('/login')} className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Sign In</button>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-xl font-bold text-gray-900 mb-6">Set New Password</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm Password</label>
+                <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleReset()} placeholder="••••••••" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>}
+              <button onClick={handleReset} disabled={loading || !password.trim()} className="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                {loading ? <RefreshCw size={16} className="animate-spin" /> : null}
+                {loading ? 'Resetting…' : 'Reset Password'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
