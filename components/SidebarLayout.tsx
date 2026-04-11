@@ -1,8 +1,5 @@
-'use client'
-
 import { useState } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, AppWindow, Settings, Users, FileText, HelpCircle, Building, Menu, X } from 'lucide-react'
 
 const navItems = [
@@ -15,7 +12,7 @@ const navItems = [
 ]
 
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
+  const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const isActive = (path: string) => pathname.includes(path)
 
@@ -35,7 +32,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         {navItems.map((item) => (
           <Link
             key={item.label}
-            href={item.path}
+            to={item.path}
             onClick={() => setOpen(false)}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
               isActive(item.path) ? 'bg-gray-100 text-brand-dark font-medium' : 'text-gray-500 hover:bg-gray-50'
@@ -47,7 +44,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         ))}
       </nav>
       <div className="mt-auto pt-6 border-t">
-        <Link href="/help" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg">
+        <Link to="/help" onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-3 text-gray-500 hover:bg-gray-50 rounded-lg">
           <HelpCircle size={20} /> <span className="text-sm">Help and Docs</span>
         </Link>
       </div>

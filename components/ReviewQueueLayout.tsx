@@ -1,7 +1,5 @@
-'use client'
-
 import { useState } from 'react'
-import Link from 'next/link'
+import { Link } from 'react-router-dom'
 import { Bell, Menu, X } from 'lucide-react'
 
 const navLinks = [
@@ -30,7 +28,7 @@ export default function ReviewQueueLayout({ children }: { children: React.ReactN
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-5 text-sm font-medium text-gray-600">
           {navLinks.map((link) => (
-            <Link key={link.label} href={link.path} className="hover:text-brand-dark">{link.label}</Link>
+            <Link key={link.label} to={link.path} className="hover:text-brand-dark">{link.label}</Link>
           ))}
           <Bell size={20} className="text-gray-400" />
           <div className="w-8 h-8 bg-teal-800 rounded-full flex items-center justify-center text-white text-xs">
@@ -49,7 +47,7 @@ export default function ReviewQueueLayout({ children }: { children: React.ReactN
         <div className="md:hidden bg-white border-b border-gray-200 shadow-md">
           <nav className="flex flex-col px-4 py-3 gap-1">
             {navLinks.map((link) => (
-              <Link key={link.label} href={link.path} onClick={() => setOpen(false)} className="px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50">
+              <Link key={link.label} to={link.path} onClick={() => setOpen(false)} className="px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50">
                 {link.label}
               </Link>
             ))}

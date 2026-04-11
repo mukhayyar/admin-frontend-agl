@@ -1,8 +1,5 @@
-'use client'
-
 import { useState } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { Link, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 
 const links = [
@@ -27,7 +24,7 @@ export default function AdminTopNavLayout({
   children: React.ReactNode
   title?: string
 }) {
-  const pathname = usePathname()
+  const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const isActive = (path: string) => pathname === path
 
@@ -45,18 +42,17 @@ export default function AdminTopNavLayout({
         {/* Desktop nav */}
         <nav className="hidden lg:flex items-center gap-4 text-sm font-medium text-gray-600">
           {links.map((link) => (
-            <Link key={link.path} href={link.path} className={isActive(link.path) ? 'text-brand-dark' : 'hover:text-brand-dark'}>
+            <Link key={link.path} to={link.path} className={isActive(link.path) ? 'text-brand-dark' : 'hover:text-brand-dark'}>
               {link.label}
             </Link>
           ))}
           <div className="h-4 w-px bg-gray-300 mx-1" />
           {demoLinks.map((link) => (
-            <Link key={link.path} href={link.path} className={`text-xs ${isActive(link.path) ? 'text-brand-dark font-bold' : 'text-gray-400 hover:text-brand-dark'}`}>
+            <Link key={link.path} to={link.path} className={`text-xs ${isActive(link.path) ? 'text-brand-dark font-bold' : 'text-gray-400 hover:text-brand-dark'}`}>
               ({link.label})
             </Link>
           ))}
           <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center text-xs overflow-hidden border border-gray-200">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" />
           </div>
         </nav>
@@ -74,7 +70,7 @@ export default function AdminTopNavLayout({
             {allLinks.map((link) => (
               <Link
                 key={link.path}
-                href={link.path}
+                to={link.path}
                 onClick={() => setOpen(false)}
                 className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive(link.path) ? 'bg-gray-100 text-brand-dark' : 'text-gray-600 hover:bg-gray-50'

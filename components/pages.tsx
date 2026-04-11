@@ -1,7 +1,5 @@
-'use client'
-
 import React, { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { Link } from 'react-router-dom'
 import { reviewHistoryData, backendHealthData, reviewsData } from '@/lib/dummy'
 import { Search, FileText, AppWindow, User, Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react'
 import { getStats, getPendingApps, getHealth, issueDeveloperToken, registerApp } from '@/lib/api'
@@ -21,10 +19,10 @@ export const LandingPage: React.FC = () => {
           App Store
         </div>
         <nav className="flex gap-6 text-sm font-medium items-center text-gray-600">
-          <Link href="#">Dashboard</Link>
-          <Link href="#">Apps</Link>
-          <Link href="#">Documentation</Link>
-          <Link href="#">Support</Link>
+          <Link to="#">Dashboard</Link>
+          <Link to="#">Apps</Link>
+          <Link to="#">Documentation</Link>
+          <Link to="#">Support</Link>
           <div className="w-8 h-8 bg-teal-800 rounded-full flex items-center justify-center">
             <div className="w-4 h-4 border-2 border-white rounded-sm transform rotate-45" />
           </div>
@@ -34,8 +32,8 @@ export const LandingPage: React.FC = () => {
         <h1 className="text-4xl font-bold mb-4">Welcome to the App Store</h1>
         <p className="text-gray-600 text-lg mb-12">To get started, please select your role</p>
         <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xs sm:max-w-none">
-          <Link href="/admin/dashboard" className="bg-brand-dark text-white w-full sm:w-48 py-3 rounded-lg font-medium hover:opacity-90 transition text-center">Admin</Link>
-          <Link href="/developer/portal" className="bg-gray-100 text-brand-dark w-full sm:w-48 py-3 rounded-lg font-medium hover:bg-gray-200 transition text-center">Developer</Link>
+          <Link to="/admin/dashboard" className="bg-brand-dark text-white w-full sm:w-48 py-3 rounded-lg font-medium hover:opacity-90 transition text-center">Admin</Link>
+          <Link to="/developer/portal" className="bg-gray-100 text-brand-dark w-full sm:w-48 py-3 rounded-lg font-medium hover:bg-gray-200 transition text-center">Developer</Link>
         </div>
       </main>
     </div>
@@ -308,8 +306,8 @@ export const AdminDashboardPage: React.FC = () => {
         ))}
       </div>
       <div className="flex gap-4 mb-10">
-        <Link href="/developer/portal" className="bg-brand-dark text-white px-6 py-2 rounded-lg text-sm font-medium">Issue Developer Token</Link>
-        <Link href="/review-queue" className="bg-gray-200 text-brand-dark px-6 py-2 rounded-lg text-sm font-medium">View Review Queue</Link>
+        <Link to="/developer/portal" className="bg-brand-dark text-white px-6 py-2 rounded-lg text-sm font-medium">Issue Developer Token</Link>
+        <Link to="/review-queue" className="bg-gray-200 text-brand-dark px-6 py-2 rounded-lg text-sm font-medium">View Review Queue</Link>
       </div>
       <h2 className="text-xl font-bold mb-6">Activity Feed</h2>
       <div className="relative pl-4">
@@ -475,8 +473,8 @@ export const ResetPasswordPage: React.FC = () => {
           App Store
         </div>
         <nav className="flex gap-6 text-sm font-medium items-center text-gray-600">
-          <Link href="/admin/dashboard">Dashboard</Link>
-          <Link href="#">Apps</Link>
+          <Link to="/admin/dashboard">Dashboard</Link>
+          <Link to="#">Apps</Link>
         </nav>
       </header>
       <main className="flex-1 flex items-center justify-center">
@@ -487,7 +485,7 @@ export const ResetPasswordPage: React.FC = () => {
             <button className="w-full bg-black text-white py-4 rounded-lg font-medium hover:opacity-90 transition">Send reset link</button>
             <div className="text-center">
               <span className="text-gray-500">Remember your password? </span>
-              <Link href="/login" className="text-gray-900 font-medium hover:underline">Sign in</Link>
+              <Link to="/login" className="text-gray-900 font-medium hover:underline">Sign in</Link>
             </div>
           </form>
         </div>
