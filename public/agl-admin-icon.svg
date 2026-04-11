@@ -1,0 +1,54 @@
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>AGL App Store Admin</title>
+  <defs>
+    <linearGradient id="aglAdminBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="60%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="aglAdminShine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="55%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="aglAdminAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FB923C"/>
+      <stop offset="100%" stop-color="#F97316"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-square badge -->
+  <rect width="180" height="180" rx="38" fill="url(#aglAdminBg)"/>
+  <rect width="180" height="180" rx="38" fill="url(#aglAdminShine)"/>
+
+  <!-- Subtle grid frame to hint at dashboard / command center -->
+  <g stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="1">
+    <line x1="30" y1="30" x2="150" y2="30"/>
+    <line x1="30" y1="150" x2="150" y2="150"/>
+    <line x1="30" y1="30" x2="30" y2="150"/>
+    <line x1="150" y1="30" x2="150" y2="150"/>
+  </g>
+
+  <!-- Bold "A" monogram, matching the storefront icon -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M42 140 L90 36 L138 140"/>
+    <path d="M64 102 L116 102"/>
+  </g>
+
+  <!-- Admin gear badge at top-right (8-tooth cog) -->
+  <g transform="translate(140 40)">
+    <!-- Gear teeth: 8 rounded rectangles radiating from center -->
+    <g fill="url(#aglAdminAccent)">
+      <rect x="-3" y="-22" width="6" height="8" rx="1.5"/>
+      <rect x="-3" y="14" width="6" height="8" rx="1.5"/>
+      <rect x="-22" y="-3" width="8" height="6" rx="1.5"/>
+      <rect x="14" y="-3" width="8" height="6" rx="1.5"/>
+      <rect x="-3" y="-22" width="6" height="8" rx="1.5" transform="rotate(45)"/>
+      <rect x="-3" y="14" width="6" height="8" rx="1.5" transform="rotate(45)"/>
+      <rect x="-22" y="-3" width="8" height="6" rx="1.5" transform="rotate(45)"/>
+      <rect x="14" y="-3" width="8" height="6" rx="1.5" transform="rotate(45)"/>
+    </g>
+    <!-- Gear body -->
+    <circle r="15" fill="url(#aglAdminAccent)"/>
+    <circle r="5.5" fill="#0F172A"/>
+  </g>
+</svg>
