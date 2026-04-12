@@ -119,7 +119,7 @@ export const LandingPage: React.FC = () => {
 
         <div className="grid sm:grid-cols-2 gap-6 w-full max-w-xl">
           <Link
-            to="/admin/dashboard"
+            to="/login?next=/admin/dashboard"
             className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md hover:border-indigo-300 transition-all group"
           >
             <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-indigo-200 transition-colors">
@@ -130,7 +130,7 @@ export const LandingPage: React.FC = () => {
           </Link>
 
           <Link
-            to="/developer/portal"
+            to="/login?next=/developer/portal"
             className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md hover:border-indigo-300 transition-all group"
           >
             <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-emerald-200 transition-colors">
@@ -159,6 +159,24 @@ export const LoginPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null)
   const [orgInfo, setOrgInfo] = useState<{ is_organization_email: boolean; organization_domain: string | null } | null>(null)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const { token: authToken, user, setUser } = useAuthStore()
+
+  // Redirect already-logged-in users
+  useEffect(() => {
+    if (authToken) {
+      const next = searchParams.get('next')
+      if (next) { navigate(next, { replace: true }); return }
+      if (user?.role === 'admin') navigate('/admin/dashboard', { replace: true })
+      else navigate('/developer/portal', { replace: true })
+    }
+  }, [authToken])
+
+  function navigateAfterLogin(role: string) {
+    const next = searchParams.get('next')
+    if (next) { navigate(next, { replace: true }); return }
+    navigate(role === 'admin' ? '/admin/dashboard' : '/developer/portal', { replace: true })
+  }
 
   async function handleEmailCheck(e: string) {
     setEmail(e)
@@ -173,7 +191,9 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await loginEmail(email.trim(), password.trim())
       setToken(res.access_token)
-      navigate('/admin/dashboard')
+      const u = await getAuthUser().catch(() => null)
+      if (u) setUser(u)
+      navigateAfterLogin(u?.role ?? res.role ?? 'user')
     } catch (e) { setError(e instanceof Error ? e.message : 'Login failed') }
     finally { setLoading(false) }
   }
@@ -184,7 +204,9 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await loginGitHub(token.trim())
       setToken(res.access_token)
-      navigate('/admin/dashboard')
+      const u = await getAuthUser().catch(() => null)
+      if (u) setUser(u)
+      navigateAfterLogin(u?.role ?? res.role ?? 'user')
     } catch (e) { setError(e instanceof Error ? e.message : 'Login failed') }
     finally { setLoading(false) }
   }
@@ -216,7 +238,13 @@ export const LoginPage: React.FC = () => {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 w-full max-w-md">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">PensHub App Store</h1>
-          <p className="text-gray-500 text-sm mt-1">Sign in to continue</p>
+          {searchParams.get('next')?.includes('/admin') ? (
+            <p className="text-gray-500 text-sm mt-1">Sign in to access the <span className="font-semibold text-indigo-600">Admin Portal</span></p>
+          ) : searchParams.get('next')?.includes('/developer') ? (
+            <p className="text-gray-500 text-sm mt-1">Sign in to access the <span className="font-semibold text-emerald-600">Developer Portal</span></p>
+          ) : (
+            <p className="text-gray-500 text-sm mt-1">Sign in to continue</p>
+          )}
         </div>
 
         {tab !== 'register' && tab !== 'forgot' && (

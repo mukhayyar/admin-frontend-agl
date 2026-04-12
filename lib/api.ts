@@ -213,7 +213,7 @@ export async function registerEmail(email: string, password: string, display_nam
   return res.json()
 }
 
-export async function loginEmail(email: string, password: string): Promise<{ access_token: string }> {
+export async function loginEmail(email: string, password: string): Promise<{ access_token: string; role: string; user_id: number }> {
   const res = await fetch(`${API_URL}/auth/login/email`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
