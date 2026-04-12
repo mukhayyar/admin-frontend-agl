@@ -1324,6 +1324,17 @@ export const DeveloperPortalPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Developer Guide Banner */}
+      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-blue-900">New to PensHub?</h3>
+          <p className="text-sm text-blue-700">Read the Developer Guide to avoid common errors.</p>
+        </div>
+        <a href="/developer/guide" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+          View Guide →
+        </a>
+      </div>
+
       {/* Publisher agreement */}
       {!user.accepted_publisher_agreement && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
@@ -2009,6 +2020,206 @@ export const ResetPasswordPage: React.FC = () => {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Developer Guide Page ───────────────────────────────────────────────────────
+
+export const DeveloperGuidePage: React.FC = () => {
+  return (
+    <div className="space-y-8 max-w-4xl">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+          <FileText className="text-blue-600" size={22} />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Developer Guide</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Everything you need to publish apps on PensHub</p>
+        </div>
+      </div>
+
+      {/* Section 1: Quick Start */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">1</span>
+          Quick Start
+        </h2>
+        <ol className="space-y-3">
+          {[
+            <>Register on <a href="https://admin.agl-store.cyou/developer/portal" className="text-blue-600 hover:underline font-medium">admin.agl-store.cyou/developer/portal</a></>,
+            'Agree to the developer agreement',
+            'Create an API key',
+            'Build your flatpak (see below)',
+            'Submit via the portal or API',
+          ].map((step, i) => (
+            <li key={i} className="flex items-start gap-3">
+              <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">{i + 1}</span>
+              <span className="text-gray-700 text-sm">{step}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* Section 2: Building a Flatpak */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">2</span>
+          Building a Flatpak
+        </h2>
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-600 mb-2 font-medium">Install flatpak-builder</p>
+            <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto"><code>sudo apt install flatpak-builder</code></pre>
+          </div>
+          <div>
+            <p className="text-sm text-gray-600 mb-2 font-medium">Create manifest: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">com.yourcompany.AppName.json</code></p>
+            <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{`{
+  "app-id": "com.yourcompany.AppName",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "23.08",
+  "sdk": "org.freedesktop.Sdk",
+  "command": "your-app",
+  "finish-args": ["--share=ipc", "--socket=x11"],
+  "modules": [...]
+}`}</code></pre>
+          </div>
+          <div>
+            <p className="text-sm text-gray-600 mb-2 font-medium">Build &amp; export to bundle</p>
+            <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{`# Build
+flatpak-builder --force-clean build-dir com.yourcompany.AppName.json
+
+# Export to bundle
+flatpak build-export repo build-dir
+flatpak build-bundle repo com.yourcompany.AppName.flatpak com.yourcompany.AppName`}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 3: App ID Rules */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">3</span>
+          App ID Rules
+        </h2>
+        <ul className="space-y-2.5">
+          <li className="flex items-start gap-2 text-sm text-gray-700">
+            <CheckCircle size={16} className="text-green-500 mt-0.5 shrink-0" />
+            Must be reverse-domain notation: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono ml-1">com.company.AppName</code>
+          </li>
+          <li className="flex items-start gap-2 text-sm text-gray-700">
+            <CheckCircle size={16} className="text-green-500 mt-0.5 shrink-0" />
+            No spaces — use CamelCase for the last segment
+          </li>
+          <li className="flex items-start gap-2 text-sm text-gray-700">
+            <CheckCircle size={16} className="text-green-500 mt-0.5 shrink-0" />
+            <span>Example: <code className="bg-green-50 border border-green-200 px-1.5 py-0.5 rounded text-xs font-mono text-green-800">com.pens.AsciiArt</code> ✓ &nbsp; <code className="bg-red-50 border border-red-200 px-1.5 py-0.5 rounded text-xs font-mono text-red-800">com.pens.ascii art</code> ✗</span>
+          </li>
+          <li className="flex items-start gap-2 text-sm text-gray-700">
+            <CheckCircle size={16} className="text-green-500 mt-0.5 shrink-0" />
+            Must be globally unique
+          </li>
+        </ul>
+      </section>
+
+      {/* Section 4: Common Errors & Solutions */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">4</span>
+          Common Errors &amp; Solutions
+        </h2>
+        <div className="space-y-4">
+          {/* Error 1 */}
+          <div className="border border-red-200 rounded-lg overflow-hidden">
+            <div className="bg-red-50 px-4 py-2.5 flex items-center gap-2">
+              <XCircle size={16} className="text-red-600 shrink-0" />
+              <span className="text-sm font-semibold text-red-800">"Commit metadata not matching expected metadata"</span>
+            </div>
+            <div className="p-4 space-y-1.5 text-sm text-gray-700">
+              <p><span className="font-medium text-gray-900">Cause:</span> App was built without proper <code className="bg-gray-100 px-1 rounded text-xs font-mono">flatpak build-finish</code> step, or metadata file is missing.</p>
+              <p><span className="font-medium text-gray-900">Fix:</span> Ensure <code className="bg-gray-100 px-1 rounded text-xs font-mono">flatpak build-finish</code> is called before export. Re-submit the app.</p>
+              <p><span className="font-medium text-gray-900">Prevention:</span> Always use <code className="bg-gray-100 px-1 rounded text-xs font-mono">flatpak-builder</code> (not raw ostree) — it sets <code className="bg-gray-100 px-1 rounded text-xs font-mono">xa.metadata</code> automatically.</p>
+            </div>
+          </div>
+
+          {/* Error 2 */}
+          <div className="border border-red-200 rounded-lg overflow-hidden">
+            <div className="bg-red-50 px-4 py-2.5 flex items-center gap-2">
+              <XCircle size={16} className="text-red-600 shrink-0" />
+              <span className="text-sm font-semibold text-red-800">"No remote refs found for 'penshub'"</span>
+            </div>
+            <div className="p-4 space-y-1.5 text-sm text-gray-700">
+              <p><span className="font-medium text-gray-900">Cause:</span> PensHub remote not added on the device.</p>
+              <p><span className="font-medium text-gray-900">Fix:</span></p>
+              <pre className="bg-gray-900 text-gray-100 rounded-lg p-3 text-xs overflow-x-auto"><code>flatpak remote-add --user --gpg-import=penshub.gpg penshub https://repo.agl-store.cyou</code></pre>
+            </div>
+          </div>
+
+          {/* Error 3 */}
+          <div className="border border-amber-200 rounded-lg overflow-hidden">
+            <div className="bg-amber-50 px-4 py-2.5 flex items-center gap-2">
+              <XCircle size={16} className="text-amber-600 shrink-0" />
+              <span className="text-sm font-semibold text-amber-800">"SSL certificate error"</span>
+            </div>
+            <div className="p-4 space-y-1.5 text-sm text-gray-700">
+              <p><span className="font-medium text-gray-900">Cause:</span> Outdated CA bundle on device.</p>
+              <p><span className="font-medium text-gray-900">Fix:</span></p>
+              <pre className="bg-gray-900 text-gray-100 rounded-lg p-3 text-xs overflow-x-auto"><code>sudo update-ca-certificates</code></pre>
+            </div>
+          </div>
+
+          {/* Error 4 */}
+          <div className="border border-amber-200 rounded-lg overflow-hidden">
+            <div className="bg-amber-50 px-4 py-2.5 flex items-center gap-2">
+              <XCircle size={16} className="text-amber-600 shrink-0" />
+              <span className="text-sm font-semibold text-amber-800">"Unable to load summary"</span>
+            </div>
+            <div className="p-4 space-y-1.5 text-sm text-gray-700">
+              <p><span className="font-medium text-gray-900">Cause:</span> Stale remote cache.</p>
+              <p><span className="font-medium text-gray-900">Fix:</span></p>
+              <pre className="bg-gray-900 text-gray-100 rounded-lg p-3 text-xs overflow-x-auto"><code>flatpak remote-delete penshub && flatpak remote-add --user --gpg-import=penshub.gpg penshub https://repo.agl-store.cyou</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 5: Upload via API */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">5</span>
+          Upload via API
+        </h2>
+        <p className="text-sm text-gray-600 mb-3">Get your API key from the developer portal, then:</p>
+        <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{`curl -X POST https://admin.agl-store.cyou/api/developer/submit \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -F "flatpak=@com.yourcompany.AppName.flatpak" \\
+  -F "name=My App" \\
+  -F "summary=Short description" \\
+  -F "description=Full description" \\
+  -F "category=Utility"`}</code></pre>
+      </section>
+
+      {/* Section 6: Review Process */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">6</span>
+          Review Process
+        </h2>
+        <ul className="space-y-3">
+          {[
+            'Submission reviewed within 3–5 business days',
+            'Automated security scan (ClamAV + Trivy CVE + checksec ELF)',
+            'Manual review by PENS team',
+            'Approved apps live within 24h of approval',
+          ].map((item, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+              <CheckCircle size={16} className="text-green-500 mt-0.5 shrink-0" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   )
 }
