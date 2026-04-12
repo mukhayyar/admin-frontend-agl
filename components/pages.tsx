@@ -782,22 +782,22 @@ export const SubmissionDetailsPage: React.FC = () => {
             </div>
           )}
 
-          {sub.categories.length > 0 && (
+          {(sub.categories?.length ?? 0) > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-semibold text-gray-900 mb-3">Categories</h2>
               <div className="flex flex-wrap gap-2">
-                {sub.categories.map(cat => (
+                {(sub.categories ?? []).map(cat => (
                   <span key={cat} className="bg-indigo-50 text-indigo-700 text-xs px-3 py-1 rounded-full font-medium">{cat}</span>
                 ))}
               </div>
             </div>
           )}
 
-          {sub.screenshots.length > 0 && (
+          {(sub.screenshots?.length ?? 0) > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-semibold text-gray-900 mb-3">Screenshots</h2>
               <div className="grid grid-cols-2 gap-3">
-                {sub.screenshots.map((ss, i) => (
+                {(sub.screenshots ?? []).map((ss, i) => (
                   <div key={i} className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
                     <img src={ss.url} alt={ss.caption ?? `Screenshot ${i + 1}`} className="w-full object-cover" />
                     {ss.caption && <p className="text-xs text-gray-500 px-2 py-1">{ss.caption}</p>}
