@@ -18,6 +18,9 @@ import {
   LayoutDashboard,
   Star,
   ChevronLeft,
+  BookOpen,
+  Terminal,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   getToken,
@@ -1324,16 +1327,50 @@ export const DeveloperPortalPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Developer Guide Banner */}
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-blue-900">New to PensHub?</h3>
-          <p className="text-sm text-blue-700">Read the Developer Guide to avoid common errors.</p>
+      {/* Quick Start Guide */}
+      <section className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <BookOpen className="text-indigo-600" size={18} />
+          <h2 className="font-semibold text-gray-900">How to publish your app</h2>
         </div>
-        <a href="/developer/guide" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-          View Guide →
-        </a>
-      </div>
+        <ol className="space-y-3 text-sm">
+          <li className="flex gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold">1</span>
+            <div>
+              <p className="font-medium text-gray-800">Install prerequisites</p>
+              <code className="block mt-1 bg-white/80 rounded px-2 py-1 text-xs font-mono text-gray-600">sudo apt install flatpak flatpak-builder<br />flatpak install flathub org.gnome.Platform//45 org.gnome.Sdk//45</code>
+            </div>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold">2</span>
+            <div>
+              <p className="font-medium text-gray-800">Build your app</p>
+              <code className="block mt-1 bg-white/80 rounded px-2 py-1 text-xs font-mono text-gray-600">flatpak-builder --force-clean build-dir com.pens.MyApp.yml</code>
+            </div>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold">3</span>
+            <div className="flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="font-medium text-gray-800">Export to a local repo</p>
+                <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-semibold">Required</span>
+              </div>
+              <code className="block mt-1 bg-white/80 rounded px-2 py-1 text-xs font-mono text-gray-600">flatpak build-export repo build-dir</code>
+              <div className="flex items-start gap-1.5 mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                <AlertTriangle size={12} className="text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-700">Never use raw <code className="font-mono">ostree commit</code> — it breaks app metadata and the install will fail.</p>
+              </div>
+            </div>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold">4</span>
+            <div>
+              <p className="font-medium text-gray-800">Submit app metadata below, then upload via API</p>
+              <code className="block mt-1 bg-white/80 rounded px-2 py-1 text-xs font-mono text-gray-600">flat-manager-client push --token YOUR_API_KEY https://admin.agl-store.cyou/api/v1 stable repo/</code>
+            </div>
+          </li>
+        </ol>
+      </section>
 
       {/* Publisher agreement */}
       {!user.accepted_publisher_agreement && (
@@ -1363,6 +1400,11 @@ export const DeveloperPortalPage: React.FC = () => {
           <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Key size={18} /> API Keys</h2>
         </div>
         <div className="p-6 space-y-4">
+          <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex items-start gap-2 text-sm">
+            <Terminal size={14} className="text-blue-500 mt-0.5 shrink-0" />
+            <p className="text-blue-700">After creating a key, use it with <code className="font-mono bg-white/70 px-1 rounded text-xs">flat-manager-client push --token &lt;key&gt; https://admin.agl-store.cyou/api/v1 stable repo/</code></p>
+          </div>
+
           {createdKey && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <p className="text-green-800 text-sm font-semibold mb-2">New key created: {createdKey.name}</p>

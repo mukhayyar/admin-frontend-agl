@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./components/AdminTopNavLayout.tsx","./components/ReviewQueueLayout.tsx","./components/SidebarLayout.tsx","./components/pages.tsx","./lib/api.ts","./lib/dummy.ts","./lib/stores.ts","./lib/types.ts"],"errors":true,"version":"5.9.3"}
