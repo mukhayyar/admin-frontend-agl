@@ -1956,9 +1956,20 @@ export const DeveloperPortalPage: React.FC = () => {
           </li>
           <li className="flex gap-3">
             <span className="flex-shrink-0 w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold">4</span>
-            <div>
-              <p className="font-medium text-gray-800">Submit app metadata below, then upload via API</p>
-              <code className="block mt-1 bg-white/80 rounded px-2 py-1 text-xs font-mono text-gray-600">flat-manager-client push --token YOUR_API_KEY https://admin.agl-store.cyou/api/v1 stable repo/</code>
+            <div className="flex-1">
+              <p className="font-medium text-gray-800">Fill in the submission form below and click <em>Submit App for Review</em></p>
+              <p className="text-xs text-gray-500 mt-1">
+                Provide your App ID, name, summary, description, category, and icon URL. Your app enters
+                the admin review queue immediately — no CLI upload required.
+              </p>
+              <div className="flex items-start gap-1.5 mt-1.5 bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
+                <Terminal size={12} className="text-blue-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-700">
+                  Prefer automation? Use the REST API with your API key:<br />
+                  <code className="font-mono bg-white/70 px-1 rounded">POST https://admin.agl-store.cyou/api/developer/submit</code> with a JSON body.
+                  See the <a href="/developer/guide" className="underline">Developer Guide</a> §5 for the full schema.
+                </p>
+              </div>
             </div>
           </li>
         </ol>
@@ -1994,7 +2005,11 @@ export const DeveloperPortalPage: React.FC = () => {
         <div className="p-6 space-y-4">
           <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex items-start gap-2 text-sm">
             <Terminal size={14} className="text-blue-500 mt-0.5 shrink-0" />
-            <p className="text-blue-700">After creating a key, use it with <code className="font-mono bg-white/70 px-1 rounded text-xs">flat-manager-client push --token &lt;key&gt; https://admin.agl-store.cyou/api/v1 stable repo/</code></p>
+            <p className="text-blue-700">
+              Use your API key as a Bearer token when calling the submission API:<br />
+              <code className="font-mono bg-white/70 px-1 rounded text-xs">Authorization: Bearer &lt;key&gt;</code>
+              {' — '}see the <a href="/developer/guide" className="underline">Developer Guide</a> §5 for the full endpoint reference.
+            </p>
           </div>
 
           {createdKey && (
@@ -2954,14 +2969,29 @@ flatpak build-bundle repo com.yourcompany.AppName.flatpak com.yourcompany.AppNam
           <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">5</span>
           Upload via API
         </h2>
-        <p className="text-sm text-gray-600 mb-3">Get your API key from the developer portal, then:</p>
+        <p className="text-sm text-gray-600 mb-3">
+          Generate an API key from the <a href="/developer/portal" className="text-blue-600 hover:underline">Developer Portal</a>,
+          then submit app metadata as JSON:
+        </p>
         <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{`curl -X POST https://admin.agl-store.cyou/api/developer/submit \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
-  -F "flatpak=@com.yourcompany.AppName.flatpak" \\
-  -F "name=My App" \\
-  -F "summary=Short description" \\
-  -F "description=Full description" \\
-  -F "category=Utility"`}</code></pre>
+  -H "Content-Type: application/json" \\
+  -d '{
+    "app_id": "com.yourcompany.AppName",
+    "name": "My App",
+    "summary": "Short one-line description",
+    "description": "Full description of the app.",
+    "app_type": "desktop-application",
+    "categories": ["Utility"],
+    "license": "MIT",
+    "icon": "https://example.com/icon.png",
+    "homepage": "https://example.com"
+  }'`}</code></pre>
+        <p className="text-xs text-gray-500 mt-2">
+          The submission enters the admin review queue immediately.
+          Poll <code className="font-mono bg-gray-100 px-1 rounded">GET /developer/submissions</code> to track status.
+          No binary upload is needed — binaries are provided separately via the flatpak build pipeline.
+        </p>
       </section>
 
       {/* Section 6: Review Process */}
