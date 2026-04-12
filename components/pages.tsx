@@ -23,6 +23,8 @@ import {
   AlertTriangle,
   Send,
   Github,
+  MessageCircle,
+  X,
 } from 'lucide-react'
 import {
   getToken,
@@ -56,6 +58,10 @@ import {
   listUsers,
   trustPublisher,
   untrustPublisher,
+  getSubmissionComments,
+  addSubmissionComment,
+  appealSubmission,
+  getMySubmission,
 } from '@/lib/api'
 import type { AuthUser, DevKey, AppSubmission, AdminStats, PlatformStats } from '@/lib/types'
 
@@ -807,6 +813,7 @@ export const SubmissionDetailsPage: React.FC = () => {
           )}
         </div>
       </div>
+    <SubmissionCommentSection subId={sub.id} />
     </div>
   )
 }
@@ -1137,6 +1144,218 @@ export const SystemHealthPage: React.FC = () => {
   )
 }
 
+
+// ── Submission Detail Modal ──────────────────────────────────────────────────
+
+function SubmissionDetailModal({ subId, onClose }: { subId: number; onClose: () => void }) {
+  const [sub, setSub] = useState<any>(null)
+  const [comments, setComments] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newComment, setNewComment] = useState('')
+  const [posting, setPosting] = useState(false)
+  const [appealOpen, setAppealOpen] = useState(false)
+  const [appealMsg, setAppealMsg] = useState('')
+  const [appealLoading, setAppealLoading] = useState(false)
+  const [appealDone, setAppealDone] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const { user } = useAuthStore()
+  const isAdmin = user?.role === 'admin' || user?.role === 'reviewer'
+
+  async function load() {
+    try {
+      const [s, c] = await Promise.all([
+        getMySubmission(subId).catch(() => null),
+        getSubmissionComments(subId).catch(() => []),
+      ])
+      setSub(s)
+      setComments(c)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [subId])
+
+  async function handleComment() {
+    if (!newComment.trim()) return
+    setPosting(true)
+    try {
+      await addSubmissionComment(subId, newComment.trim())
+      setNewComment('')
+      const updated = await getSubmissionComments(subId)
+      setComments(updated)
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    finally { setPosting(false) }
+  }
+
+  async function handleAppeal() {
+    if (!appealMsg.trim()) return
+    setAppealLoading(true)
+    try {
+      await appealSubmission(subId, appealMsg.trim())
+      setAppealDone(true)
+      setAppealOpen(false)
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') }
+    finally { setAppealLoading(false) }
+  }
+
+  const canAppeal = sub && (sub.status === 'rejected' || (sub.status === 'pending' && sub.submitted_at && (Date.now() - new Date(sub.submitted_at).getTime()) > 3 * 86400 * 1000))
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">{loading ? 'Loading…' : sub?.name ?? 'Submission'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors"><X size={20} /></button>
+        </div>
+
+        {loading ? (
+          <div className="p-8"><LoadingPulse /></div>
+        ) : sub ? (
+          <div className="p-6 space-y-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <StatusBadge status={sub.status} />
+              <span className="text-xs text-gray-400">Submitted {fmtDate(sub.submitted_at)}</span>
+              {sub.app_id && <span className="text-xs font-mono text-gray-400">{sub.app_id}</span>}
+              {appealDone && <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full font-medium">Appeal submitted</span>}
+              {sub.appeal_status === 'pending' && !appealDone && <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full font-medium">Appeal pending review</span>}
+            </div>
+
+            {sub.rejection_reason && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm font-semibold text-red-700 mb-1">Rejection reason</p>
+                <p className="text-sm text-red-600">{sub.rejection_reason}</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              {sub.summary && <div className="col-span-2"><span className="text-gray-500 block mb-0.5">Summary</span><span className="text-gray-900">{sub.summary}</span></div>}
+              {sub.homepage && <div><span className="text-gray-500 block mb-0.5">Homepage</span><a href={sub.homepage} target="_blank" rel="noreferrer" className="text-indigo-600 underline truncate block">{sub.homepage}</a></div>}
+              {sub.license && <div><span className="text-gray-500 block mb-0.5">License</span><span className="text-gray-900">{sub.license}</span></div>}
+              {sub.app_type && <div><span className="text-gray-500 block mb-0.5">Type</span><span className="text-gray-900 capitalize">{sub.app_type.replace(/-/g, ' ')}</span></div>}
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <MessageCircle size={15} /> Comments ({comments.length})
+              </h3>
+              {comments.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No comments yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {comments.map(c => (
+                    <div key={c.id} className={`rounded-lg p-3 text-sm ${c.role === 'admin' || c.role === 'reviewer' ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-800">{c.author}</span>
+                        {(c.role === 'admin' || c.role === 'reviewer') && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 rounded capitalize">{c.role}</span>}
+                        <span className="text-xs text-gray-400 ml-auto">{fmtDate(c.created_at)}</span>
+                      </div>
+                      <p className="text-gray-700 whitespace-pre-wrap">{c.body}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4">
+                <textarea
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  placeholder="Add a comment…"
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+                <div className="flex justify-end mt-2">
+                  <button onClick={handleComment} disabled={posting || !newComment.trim()} className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+                    {posting ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
+                    {posting ? 'Posting…' : 'Post'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {!isAdmin && canAppeal && sub.appeal_status !== 'pending' && !appealDone && (
+              <div className="border border-amber-200 bg-amber-50 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-amber-800 flex items-center gap-1.5"><AlertTriangle size={14} /> Request Review</h3>
+                  {!appealOpen && (
+                    <button onClick={() => setAppealOpen(true)} className="text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors">
+                      Appeal
+                    </button>
+                  )}
+                </div>
+                {appealOpen && (
+                  <div className="space-y-2">
+                    <textarea value={appealMsg} onChange={e => setAppealMsg(e.target.value)} placeholder="Explain why you're requesting a review…" rows={3} className="w-full px-3 py-2 rounded-lg border border-amber-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none bg-white" />
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setAppealOpen(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">Cancel</button>
+                      <button onClick={handleAppeal} disabled={appealLoading || !appealMsg.trim()} className="px-4 py-1.5 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+                        {appealLoading ? <RefreshCw size={13} className="animate-spin" /> : null}
+                        Submit Appeal
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {err && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{err}</div>}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-gray-400">Submission not found</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Submission Comment Section (admin) ────────────────────────────────────────
+
+function SubmissionCommentSection({ subId }: { subId: number }) {
+  const [comments, setComments] = useState<any[]>([])
+  const [newComment, setNewComment] = useState('')
+  const [posting, setPosting] = useState(false)
+
+  useEffect(() => {
+    getSubmissionComments(subId).then(setComments).catch(() => {})
+  }, [subId])
+
+  async function handlePost() {
+    if (!newComment.trim()) return
+    setPosting(true)
+    try {
+      await addSubmissionComment(subId, newComment.trim())
+      setNewComment('')
+      const updated = await getSubmissionComments(subId)
+      setComments(updated)
+    } finally { setPosting(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
+      <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2"><MessageCircle size={16} />Comments</h2>
+      <div className="space-y-3 mb-4">
+        {comments.length === 0 ? <p className="text-sm text-gray-400 italic">No comments yet.</p> : comments.map(c => (
+          <div key={c.id} className={`rounded-lg p-3 text-sm ${c.role === 'admin' || c.role === 'reviewer' ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-semibold">{c.author}</span>
+              {(c.role === 'admin' || c.role === 'reviewer') && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 rounded capitalize">{c.role}</span>}
+              <span className="text-xs text-gray-400 ml-auto">{fmtDate(c.created_at)}</span>
+            </div>
+            <p className="text-gray-700 whitespace-pre-wrap">{c.body}</p>
+          </div>
+        ))}
+      </div>
+      <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Add a comment for the developer…" rows={2} className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
+      <div className="flex justify-end mt-2">
+        <button onClick={handlePost} disabled={posting || !newComment.trim()} className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+          {posting ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
+          {posting ? 'Posting…' : 'Post Comment'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Developer Portal Page ─────────────────────────────────────────────────────
 
 export const DeveloperPortalPage: React.FC = () => {
@@ -1179,6 +1398,7 @@ export const DeveloperPortalPage: React.FC = () => {
   // My submissions
   const [mySubs, setMySubs] = useState<AppSubmission[]>([])
   const [mySubsLoading, setMySubsLoading] = useState(false)
+  const [detailSubId, setDetailSubId] = useState<number | null>(null)
 
   // Trust publisher request
   const [trustRequestStatus, setTrustRequestStatus] = useState<string | null>(null)
@@ -1811,7 +2031,7 @@ export const DeveloperPortalPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {mySubs.map(sub => (
-                  <tr key={sub.id} className="hover:bg-gray-50">
+                  <tr key={sub.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDetailSubId(sub.id)}>
                     <td className="px-4 py-3 font-medium text-gray-900">{sub.name}</td>
                     <td className="px-4 py-3"><StatusBadge status={sub.status} /></td>
                     <td className="px-4 py-3 text-gray-500">{fmtDate(sub.submitted_at)}</td>

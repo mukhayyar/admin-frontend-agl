@@ -289,3 +289,25 @@ export async function getMyTrustRequest() {
   if (!res.ok) throw new Error('Failed to fetch trust request status')
   return res.json()
 }
+
+export async function getSubmissionComments(subId: number) {
+  return apiFetchJson<{ id: number; body: string; created_at: string; author: string; role: string }[]>(`/submissions/${subId}/comments`)
+}
+
+export async function addSubmissionComment(subId: number, body: string) {
+  return apiFetchJson<{ ok: boolean }>(`/submissions/${subId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  })
+}
+
+export async function appealSubmission(subId: number, message: string) {
+  return apiFetchJson<{ ok: boolean }>(`/developer/submissions/${subId}/appeal`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  })
+}
+
+export async function getMySubmission(subId: number) {
+  return apiFetchJson<any>(`/developer/submissions/${subId}`)
+}
