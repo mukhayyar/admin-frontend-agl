@@ -49,6 +49,7 @@ import {
   getAdminSubmission,
   approveSubmission,
   rejectSubmission,
+  revokeApp,
   triggerScan,
   getScanResult,
   getScanStatus,
@@ -80,6 +81,7 @@ function StatusBadge({ status }: { status: string }) {
     pending: 'bg-amber-100 text-amber-800',
     approved: 'bg-green-100 text-green-800',
     rejected: 'bg-red-100 text-red-800',
+    revoked:  'bg-red-900 text-white',
   }
   return (
     <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${styles[status] ?? 'bg-gray-100 text-gray-700'}`}>
@@ -801,6 +803,8 @@ export const SubmissionDetailsPage: React.FC = () => {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [revokeOpen, setRevokeOpen] = useState(false)
+  const [revokeReason, setRevokeReason] = useState('')
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [scanStatus, setScanStatus] = useState<ScanStatus['status']>('idle')
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
@@ -882,6 +886,21 @@ export const SubmissionDetailsPage: React.FC = () => {
       setRejectOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to reject')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleRevoke() {
+    if (!sub || !revokeReason.trim()) return
+    setActionLoading(true)
+    try {
+      await revokeApp(sub.app_id, revokeReason.trim())
+      setSub({ ...sub, status: 'revoked' })
+      setActionSuccess('App revoked and removed from distribution.')
+      setRevokeOpen(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Revoke failed')
     } finally {
       setActionLoading(false)
     }
@@ -1071,6 +1090,42 @@ export const SubmissionDetailsPage: React.FC = () => {
                 {scanStatus === 'running' && <p className="text-xs text-gray-400 text-center mt-1.5">Scanning flatpak — you can leave this page, it runs in the background.</p>}
                 {scanStatus === 'failed' && <p className="text-xs text-red-500 text-center mt-1.5">Scan failed — check server logs.</p>}
               </div>
+            </div>
+          )}
+
+          {/* Revoke — shown for approved/live apps */}
+          {sub.status === 'approved' && (
+            <div className="bg-white rounded-xl border border-red-200 shadow-sm p-5 space-y-3">
+              <h2 className="font-semibold text-red-700 flex items-center gap-2">
+                <ShieldX size={16} /> Danger Zone
+              </h2>
+              <button
+                onClick={() => setRevokeOpen(!revokeOpen)}
+                disabled={actionLoading}
+                className="w-full bg-red-700 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-red-800 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+              >
+                <ShieldX size={15} />
+                Revoke & Remove from Distribution
+              </button>
+              <p className="text-xs text-red-500">This permanently removes the app from the OSTree repo. Devices can no longer install or update it.</p>
+              {revokeOpen && (
+                <div className="space-y-2">
+                  <textarea
+                    value={revokeReason}
+                    onChange={e => setRevokeReason(e.target.value)}
+                    placeholder="Reason for revocation (sent to developer)…"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-red-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                  />
+                  <button
+                    onClick={handleRevoke}
+                    disabled={actionLoading || !revokeReason.trim()}
+                    className="w-full bg-red-800 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-red-900 disabled:opacity-50 transition-colors"
+                  >
+                    {actionLoading ? 'Revoking…' : 'Confirm Revocation'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

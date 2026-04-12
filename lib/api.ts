@@ -375,3 +375,10 @@ export interface AdminUserProfile {
 export async function getAdminUserProfile(userId: number): Promise<AdminUserProfile> {
   return apiFetchJson<AdminUserProfile>(`/admin/users/${userId}/profile`)
 }
+
+export async function revokeApp(appId: string, reason: string): Promise<{ message: string; ostree_ref_removed: boolean }> {
+  return apiFetchJson(`/admin/apps/${appId}/revoke`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
