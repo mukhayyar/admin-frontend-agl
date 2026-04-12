@@ -311,3 +311,26 @@ export async function appealSubmission(subId: number, message: string) {
 export async function getMySubmission(subId: number) {
   return apiFetchJson<any>(`/developer/submissions/${subId}`)
 }
+
+export interface ScanFinding {
+  severity: string
+  category: string
+  message: string
+  detail: string
+}
+
+export interface ScanResult {
+  verdict: string
+  risk_score: number
+  summary: string
+  findings: ScanFinding[]
+  scanned_at?: string
+}
+
+export async function triggerScan(submissionId: number): Promise<ScanResult> {
+  return apiFetchJson<ScanResult>(`/admin/scan/submission/${submissionId}`, { method: "POST" })
+}
+
+export async function getScanResult(submissionId: number): Promise<ScanResult> {
+  return apiFetchJson<ScanResult>(`/admin/scan/submission/${submissionId}/result`)
+}

@@ -15,6 +15,8 @@ import {
   Plus,
   ExternalLink,
   ShieldCheck,
+  ShieldX,
+  ShieldAlert,
   LayoutDashboard,
   Star,
   ChevronLeft,
@@ -45,6 +47,8 @@ import {
   getAdminSubmission,
   approveSubmission,
   rejectSubmission,
+  triggerScan,
+  getScanResult,
   updateUserRole,
   getHealth,
   getCategories,
@@ -64,6 +68,7 @@ import {
   getMySubmission,
 } from '@/lib/api'
 import type { AuthUser, DevKey, AppSubmission, AdminStats, PlatformStats } from '@/lib/types'
+import type { ScanResult } from '@/lib/api'
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -596,6 +601,67 @@ export const SubmissionsListPage: React.FC = () => {
 
 // ── Submission Details Page ───────────────────────────────────────────────────
 
+// ── Scan Result Panel ────────────────────────────────────────────────────────
+
+function ScanResultPanel({ result }: { result: ScanResult }) {
+  const verdictConfig: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+    PASS:        { label: 'Pass',        cls: 'bg-green-50 border-green-200',  icon: <ShieldCheck size={18} className="text-green-600" /> },
+    WARN:        { label: 'Warning',     cls: 'bg-amber-50 border-amber-200',  icon: <ShieldAlert size={18} className="text-amber-600" /> },
+    FAIL:        { label: 'Fail',        cls: 'bg-red-50 border-red-200',      icon: <ShieldX size={18} className="text-red-600" /> },
+    NOT_SCANNED: { label: 'Not Scanned', cls: 'bg-gray-50 border-gray-200',   icon: <ShieldCheck size={18} className="text-gray-400" /> },
+  }
+  const cfg = verdictConfig[result.verdict] ?? verdictConfig['NOT_SCANNED']
+
+  const severityColor: Record<string, string> = {
+    high:   'bg-red-100 text-red-700',
+    medium: 'bg-amber-100 text-amber-700',
+    low:    'bg-blue-100 text-blue-700',
+    info:   'bg-gray-100 text-gray-600',
+  }
+
+  return (
+    <div className={`rounded-xl border p-5 space-y-4 ${cfg.cls}`}>
+      <div className="flex items-center gap-3">
+        {cfg.icon}
+        <div>
+          <h2 className="font-semibold text-gray-900 text-sm">Security Scan — {cfg.label}</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{result.summary}</p>
+        </div>
+        <div className="ml-auto text-right">
+          <span className="text-xs text-gray-400">Risk score</span>
+          <div className={`text-lg font-bold ${result.risk_score >= 70 ? 'text-red-600' : result.risk_score >= 40 ? 'text-amber-600' : 'text-green-600'}`}>
+            {result.risk_score}
+          </div>
+        </div>
+      </div>
+
+      {result.findings && result.findings.length > 0 ? (
+        <div className="space-y-2">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Findings ({result.findings.length})</h3>
+          {result.findings.map((f, i) => (
+            <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 text-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize ${severityColor[f.severity?.toLowerCase()] ?? severityColor['info']}`}>
+                  {f.severity}
+                </span>
+                <span className="text-xs text-gray-400">{f.category}</span>
+              </div>
+              <p className="text-gray-700 font-medium">{f.message}</p>
+              {f.detail && <p className="text-gray-400 text-xs mt-0.5">{f.detail}</p>}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400 italic">No findings.</p>
+      )}
+
+      {result.scanned_at && (
+        <p className="text-xs text-gray-400">Scanned {fmtDate(result.scanned_at)}</p>
+      )}
+    </div>
+  )
+}
+
 export const SubmissionDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const [sub, setSub] = useState<AppSubmission | null>(null)
@@ -605,13 +671,19 @@ export const SubmissionDetailsPage: React.FC = () => {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
+  const [scanning, setScanning] = useState(false)
 
   useEffect(() => {
     if (!id) return
     setLoading(true)
-    getAdminSubmission(Number(id))
-      .then(setSub)
-      .catch(e => setError(e instanceof Error ? e.message : 'Failed to load submission'))
+    Promise.all([
+      getAdminSubmission(Number(id)),
+      getScanResult(Number(id)).catch(() => null),
+    ]).then(([s, sr]) => {
+      setSub(s)
+      if (sr && sr.verdict !== 'NOT_SCANNED') setScanResult(sr)
+    }).catch(e => setError(e instanceof Error ? e.message : 'Failed to load submission'))
       .finally(() => setLoading(false))
   }, [id])
 
@@ -641,6 +713,20 @@ export const SubmissionDetailsPage: React.FC = () => {
       setError(e instanceof Error ? e.message : 'Failed to reject')
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  async function handleScan() {
+    if (!sub) return
+    setScanning(true)
+    setScanResult(null)
+    try {
+      const result = await triggerScan(sub.id)
+      setScanResult(result)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Scan failed')
+    } finally {
+      setScanning(false)
     }
   }
 
@@ -809,7 +895,24 @@ export const SubmissionDetailsPage: React.FC = () => {
                   </button>
                 </div>
               )}
+
+              <div className="border-t border-gray-100 pt-3 mt-1">
+                <button
+                  onClick={handleScan}
+                  disabled={scanning}
+                  className="w-full bg-violet-600 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                >
+                  {scanning ? <RefreshCw size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                  {scanning ? 'Scanning…' : 'Run Security Scan'}
+                </button>
+                {scanning && <p className="text-xs text-gray-400 text-center mt-1.5">This may take a moment…</p>}
+              </div>
             </div>
+          )}
+
+          {/* Scan result panel — shown even after approve/reject if scan was run */}
+          {scanResult && (
+            <ScanResultPanel result={scanResult} />
           )}
         </div>
       </div>
