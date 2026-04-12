@@ -346,3 +346,32 @@ export interface ScanStatus {
 export async function getScanStatus(submissionId: number): Promise<ScanStatus> {
   return apiFetchJson<ScanStatus>(`/admin/scan/submission/${submissionId}/status`)
 }
+
+export interface AdminUserProfile {
+  id: number
+  display_name: string
+  email: string | null
+  role: string
+  is_trusted_publisher: boolean
+  accepted_publisher_agreement: boolean
+  auth_provider: string
+  email_verified: boolean
+  submissions: Array<{
+    id: number
+    app_id: string
+    name: string
+    status: string
+    submitted_at: string
+    scan_verdict: string | null
+  }>
+  published_apps: Array<{
+    id: string
+    name: string
+    summary: string | null
+    icon: string | null
+  }>
+}
+
+export async function getAdminUserProfile(userId: number): Promise<AdminUserProfile> {
+  return apiFetchJson<AdminUserProfile>(`/admin/users/${userId}/profile`)
+}

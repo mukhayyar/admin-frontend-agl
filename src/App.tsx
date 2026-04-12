@@ -19,6 +19,7 @@ import {
   ResetPasswordPage,
   VerifyEmailPage,
   UsersPage,
+  AdminDeveloperProfilePage,
 } from "../components/pages"
 import { useAuthStore } from "../lib/stores"
 import { getAuthUser } from "../lib/api"
@@ -95,6 +96,7 @@ export default function App() {
           <Route path="/admin/ratings" element={<AdminRoute><AdminTopNavLayout><RatingsReviewsPage /></AdminTopNavLayout></AdminRoute>} />
           <Route path="/admin/settings" element={<AdminRoute><AdminTopNavLayout><SettingsPage /></AdminTopNavLayout></AdminRoute>} />
           <Route path="/admin/users" element={<AdminRoute><AdminTopNavLayout><UsersPage /></AdminTopNavLayout></AdminRoute>} />
+          <Route path="/admin/users/:id" element={<AdminRoute><AdminTopNavLayout><AdminDeveloperProfilePage /></AdminTopNavLayout></AdminRoute>} />
 
           {/* Developer section — requires any login */}
           <Route path="/developer/portal" element={<ProtectedRoute><AdminTopNavLayout title="Developer Portal"><DeveloperPortalPage /></AdminTopNavLayout></ProtectedRoute>} />

@@ -35,6 +35,7 @@ import {
   clearToken,
   loginGitHub,
   getAuthUser,
+  getAdminUserProfile,
   acceptPublisherAgreement,
   createDevKey,
   listDevKeys,
@@ -70,7 +71,7 @@ import {
   getMySubmission,
 } from '@/lib/api'
 import type { AuthUser, DevKey, AppSubmission, AdminStats, PlatformStats } from '@/lib/types'
-import type { ScanResult, ScanStatus } from '@/lib/api'
+import type { ScanResult, ScanStatus, AdminUserProfile } from '@/lib/api'
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -571,6 +572,7 @@ export const SubmissionsListPage: React.FC = () => {
               <tr>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">App ID</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Developer</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Submitted</th>
                 <th className="px-6 py-3" />
@@ -581,6 +583,11 @@ export const SubmissionsListPage: React.FC = () => {
                 <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-3 font-mono text-xs text-gray-500">{sub.app_id}</td>
                   <td className="px-6 py-3 font-medium text-gray-900">{sub.name}</td>
+                  <td className="px-6 py-3">
+                    <Link to={`/admin/users/${sub.user_id}`} className="text-sm text-gray-700 hover:text-indigo-600 hover:underline font-medium">
+                      {sub.developer_name || `User #${sub.user_id}`}
+                    </Link>
+                  </td>
                   <td className="px-6 py-3"><StatusBadge status={sub.status} /></td>
                   <td className="px-6 py-3 text-gray-500">{fmtDate(sub.submitted_at)}</td>
                   <td className="px-6 py-3 text-right">
@@ -2890,6 +2897,143 @@ flatpak build-bundle repo com.yourcompany.AppName.flatpak com.yourcompany.AppNam
           ))}
         </ul>
       </section>
+    </div>
+  )
+}
+
+// ── Admin: Developer Profile Page ────────────────────────────────────────────
+
+export const AdminDeveloperProfilePage: React.FC = () => {
+  const { id } = useParams<{ id: string }>()
+  const [profile, setProfile] = useState<AdminUserProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!id) return
+    setLoading(true)
+    getAdminUserProfile(Number(id))
+      .then(setProfile)
+      .catch(e => setError(e instanceof Error ? e.message : 'Failed to load profile'))
+      .finally(() => setLoading(false))
+  }, [id])
+
+  if (loading) return <div className="p-8"><LoadingPulse rows={6} /></div>
+  if (error)   return <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700 m-8">{error}</div>
+  if (!profile) return null
+
+  const pendingCount  = profile.submissions.filter(s => s.status === 'pending').length
+  const approvedCount = profile.submissions.filter(s => s.status === 'approved').length
+  const rejectedCount = profile.submissions.filter(s => s.status === 'rejected').length
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <Link to="/admin/users" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+        <ChevronLeft size={16} /> Back to Users
+      </Link>
+
+      {/* Header card */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex items-start gap-5">
+        <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+          <span className="text-indigo-700 font-bold text-xl">
+            {(profile.display_name || '?')[0].toUpperCase()}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl font-bold text-gray-900">{profile.display_name || `User #${profile.id}`}</h1>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+              profile.role === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+              profile.is_trusted_publisher ? 'bg-green-50 text-green-700 border-green-200' :
+              'bg-gray-100 text-gray-600 border-gray-200'
+            }`}>
+              {profile.is_trusted_publisher ? 'Trusted Publisher' : profile.role}
+            </span>
+            {profile.email_verified && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">Verified</span>
+            )}
+          </div>
+          {profile.email && <p className="text-sm text-gray-500 mt-1">{profile.email}</p>}
+          <div className="flex gap-4 mt-3 text-sm text-gray-500">
+            <span><strong className="text-gray-800">{approvedCount}</strong> published</span>
+            <span><strong className="text-amber-600">{pendingCount}</strong> pending</span>
+            <span><strong className="text-red-500">{rejectedCount}</strong> rejected</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Published apps */}
+      {profile.published_apps.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-900">Published Apps ({profile.published_apps.length})</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4">
+            {profile.published_apps.map(app => (
+              <div key={app.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50">
+                {app.icon ? (
+                  <img src={app.icon} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                    <Package size={18} className="text-gray-400" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900 text-sm truncate">{app.name}</p>
+                  <p className="text-xs text-gray-400 font-mono truncate">{app.id}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* All submissions */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">All Submissions ({profile.submissions.length})</h2>
+        </div>
+        {profile.submissions.length === 0 ? (
+          <div className="p-6 text-sm text-gray-400 italic">No submissions yet.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">App</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Scan</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Submitted</th>
+                <th className="px-6 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {profile.submissions.map(sub => (
+                <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-3">
+                    <p className="font-medium text-gray-900">{sub.name}</p>
+                    <p className="text-xs text-gray-400 font-mono">{sub.app_id}</p>
+                  </td>
+                  <td className="px-6 py-3"><StatusBadge status={sub.status} /></td>
+                  <td className="px-6 py-3">
+                    {sub.scan_verdict ? (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                        sub.scan_verdict === 'BLOCK' ? 'bg-red-50 text-red-700 border-red-200' :
+                        sub.scan_verdict === 'WARN'  ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        sub.scan_verdict === 'PASS'  ? 'bg-green-50 text-green-700 border-green-200' :
+                        'bg-gray-100 text-gray-500 border-gray-200'
+                      }`}>{sub.scan_verdict}</span>
+                    ) : <span className="text-xs text-gray-400">—</span>}
+                  </td>
+                  <td className="px-6 py-3 text-gray-500">{fmtDate(sub.submitted_at)}</td>
+                  <td className="px-6 py-3 text-right">
+                    <Link to={`/admin/submissions/${sub.id}`} className="text-indigo-600 hover:underline text-xs font-medium">Review</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
