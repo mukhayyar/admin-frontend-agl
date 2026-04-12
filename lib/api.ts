@@ -335,3 +335,14 @@ export async function triggerScan(submissionId: number): Promise<ScanResult> {
 export async function getScanResult(submissionId: number): Promise<ScanResult> {
   return apiFetchJson<ScanResult>(`/admin/scan/submission/${submissionId}/result`)
 }
+
+export interface ScanStatus {
+  status: 'idle' | 'queued' | 'running' | 'done' | 'failed'
+  submission_id: number
+  verdict?: string
+  scan_at?: string
+}
+
+export async function getScanStatus(submissionId: number): Promise<ScanStatus> {
+  return apiFetchJson<ScanStatus>(`/admin/scan/submission/${submissionId}/status`)
+}

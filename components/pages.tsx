@@ -50,6 +50,7 @@ import {
   rejectSubmission,
   triggerScan,
   getScanResult,
+  getScanStatus,
   updateUserRole,
   getHealth,
   getCategories,
@@ -69,7 +70,7 @@ import {
   getMySubmission,
 } from '@/lib/api'
 import type { AuthUser, DevKey, AppSubmission, AdminStats, PlatformStats } from '@/lib/types'
-import type { ScanResult } from '@/lib/api'
+import type { ScanResult, ScanStatus } from '@/lib/api'
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -684,11 +685,33 @@ function ScanResultPanel({ result }: { result: ScanResult }) {
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-0.5 truncate">{result.summary}</p>
         </div>
         {result.scanned_at && (
           <span className="text-xs text-gray-400 shrink-0">Scanned {fmtDate(result.scanned_at)}</span>
         )}
+      </div>
+
+      {/* Score breakdown */}
+      <div className="bg-white/50 border-b border-inherit px-5 py-3">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Score breakdown</p>
+        <div className="flex flex-wrap gap-3 text-xs text-gray-700 mb-2">
+          {(['CRITICAL','HIGH','MEDIUM','LOW'] as const).map(sev => {
+            const pts = sev === 'CRITICAL' ? 30 : sev === 'HIGH' ? 15 : sev === 'MEDIUM' ? 5 : 1
+            const count = (result.findings ?? []).filter(f => f.severity === sev).length
+            const contribution = Math.min(count * pts, 100)
+            const sevCls = sev === 'CRITICAL' ? 'text-red-700 bg-red-50 border-red-200' : sev === 'HIGH' ? 'text-orange-700 bg-orange-50 border-orange-200' : sev === 'MEDIUM' ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-blue-700 bg-blue-50 border-blue-200'
+            return (
+              <span key={sev} className={`px-2 py-1 rounded border font-mono ${sevCls}`}>
+                {count} × {pts}pt = <strong>{contribution}pt</strong> <span className="font-sans opacity-60">({sev})</span>
+              </span>
+            )
+          })}
+        </div>
+        <p className="text-xs text-gray-500">
+          Total (capped at 100): <strong className={result.risk_score >= 30 ? 'text-red-600' : result.risk_score >= 10 ? 'text-amber-600' : 'text-green-600'}>{result.risk_score}/100</strong>
+          {' — '}
+          <span className="opacity-70">≥30 → BLOCK, ≥10 → WARN, &lt;10 → PASS</span>
+        </p>
       </div>
 
       {/* Scan sources */}
@@ -772,7 +795,29 @@ export const SubmissionDetailsPage: React.FC = () => {
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
-  const [scanning, setScanning] = useState(false)
+  const [scanStatus, setScanStatus] = useState<ScanStatus['status']>('idle')
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+  }
+
+  const startPolling = (submissionId: number) => {
+    stopPolling()
+    pollRef.current = setInterval(async () => {
+      try {
+        const st = await getScanStatus(submissionId)
+        setScanStatus(st.status)
+        if (st.status === 'done' || st.status === 'failed') {
+          stopPolling()
+          if (st.status === 'done') {
+            const result = await getScanResult(submissionId).catch(() => null)
+            if (result && result.verdict !== 'NOT_SCANNED') setScanResult(result)
+          }
+        }
+      } catch { stopPolling() }
+    }, 3000)
+  }
 
   useEffect(() => {
     if (!id) return
@@ -780,12 +825,31 @@ export const SubmissionDetailsPage: React.FC = () => {
     Promise.all([
       getAdminSubmission(Number(id)),
       getScanResult(Number(id)).catch(() => null),
-    ]).then(([s, sr]) => {
+      getScanStatus(Number(id)).catch(() => null),
+    ]).then(([s, sr, st]) => {
       setSub(s)
       if (sr && sr.verdict !== 'NOT_SCANNED') setScanResult(sr)
+      const status = st?.status ?? 'idle'
+      setScanStatus(status)
+      // Resume polling if scan was in-progress when page was left
+      if (status === 'queued' || status === 'running') startPolling(Number(id))
     }).catch(e => setError(e instanceof Error ? e.message : 'Failed to load submission'))
       .finally(() => setLoading(false))
+    return stopPolling
   }, [id])
+
+  async function handleScan() {
+    if (!sub) return
+    setScanStatus('queued')
+    setScanResult(null)
+    try {
+      await triggerScan(sub.id)
+      startPolling(sub.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Scan failed')
+      setScanStatus('idle')
+    }
+  }
 
   async function handleApprove() {
     if (!sub) return
@@ -813,20 +877,6 @@ export const SubmissionDetailsPage: React.FC = () => {
       setError(e instanceof Error ? e.message : 'Failed to reject')
     } finally {
       setActionLoading(false)
-    }
-  }
-
-  async function handleScan() {
-    if (!sub) return
-    setScanning(true)
-    setScanResult(null)
-    try {
-      const result = await triggerScan(sub.id)
-      setScanResult(result)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Scan failed')
-    } finally {
-      setScanning(false)
     }
   }
 
@@ -999,13 +1049,15 @@ export const SubmissionDetailsPage: React.FC = () => {
               <div className="border-t border-gray-100 pt-3 mt-1">
                 <button
                   onClick={handleScan}
-                  disabled={scanning}
+                  disabled={scanStatus === 'queued' || scanStatus === 'running'}
                   className="w-full bg-violet-600 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
                 >
-                  {scanning ? <RefreshCw size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
-                  {scanning ? 'Scanning…' : 'Run Security Scan'}
+                  {(scanStatus === 'queued' || scanStatus === 'running') ? <RefreshCw size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                  {scanStatus === 'queued' ? 'Queued…' : scanStatus === 'running' ? 'Scanning…' : 'Run Security Scan'}
                 </button>
-                {scanning && <p className="text-xs text-gray-400 text-center mt-1.5">This may take a moment…</p>}
+                {scanStatus === 'queued' && <p className="text-xs text-gray-400 text-center mt-1.5">Scan queued — checking every 3s…</p>}
+                {scanStatus === 'running' && <p className="text-xs text-gray-400 text-center mt-1.5">Scanning flatpak — you can leave this page, it runs in the background.</p>}
+                {scanStatus === 'failed' && <p className="text-xs text-red-500 text-center mt-1.5">Scan failed — check server logs.</p>}
               </div>
             </div>
           )}
