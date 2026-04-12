@@ -2963,35 +2963,56 @@ flatpak build-bundle repo com.yourcompany.AppName.flatpak com.yourcompany.AppNam
         </div>
       </section>
 
-      {/* Section 5: Upload via API */}
+      {/* Section 5: Push Script */}
       <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
           <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">5</span>
-          Upload via API
+          Push Script (Recommended)
         </h2>
         <p className="text-sm text-gray-600 mb-3">
-          Generate an API key from the <a href="/developer/portal" className="text-blue-600 hover:underline">Developer Portal</a>,
-          then submit app metadata as JSON:
+          The easiest way to publish. Download our push script — it builds your bundle, uploads it, and submits metadata in one command.
         </p>
-        <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto"><code>{`curl -X POST https://admin.agl-store.cyou/api/developer/submit \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "app_id": "com.yourcompany.AppName",
-    "name": "My App",
-    "summary": "Short one-line description",
-    "description": "Full description of the app.",
-    "app_type": "desktop-application",
-    "categories": ["Utility"],
-    "license": "MIT",
-    "icon": "https://example.com/icon.png",
-    "homepage": "https://example.com"
-  }'`}</code></pre>
-        <p className="text-xs text-gray-500 mt-2">
-          The submission enters the admin review queue immediately.
-          Poll <code className="font-mono bg-gray-100 px-1 rounded">GET /developer/submissions</code> to track status.
-          No binary upload is needed — binaries are provided separately via the flatpak build pipeline.
-        </p>
+
+        {/* Download */}
+        <div className="bg-gray-900 rounded-lg p-4 text-xs font-mono text-gray-100 mb-3">
+          <span className="text-gray-400"># Download once</span><br />
+          {'curl -o push-to-agl.sh https://admin.agl-store.cyou/api/push-to-agl.sh && chmod +x push-to-agl.sh'}
+        </div>
+
+        {/* Usage */}
+        <p className="text-sm font-medium text-gray-700 mb-1.5">Then build and push in one step:</p>
+        <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>{`# 1. Build your app into a local repo
+flatpak-builder --force-clean --repo=repo build-dir com.example.MyApp.yml
+
+# 2. Push to AGL Store (uploads bundle + submits metadata)
+./push-to-agl.sh \
+  --token YOUR_API_KEY \
+  --app-id com.example.MyApp \
+  --name "My App" \
+  --summary "A short description" \
+  --category Utility \
+  --repo ./repo`}</code></pre>
+
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700 mb-3">
+          Get your API key from the <a href="/developer/portal" className="font-medium underline">Developer Portal</a>.
+          The script validates your App ID locally before uploading, so digit-start errors are caught immediately.
+        </div>
+
+        {/* Advanced: raw API */}
+        <details className="mt-2">
+          <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-700">Advanced: raw REST API</summary>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-gray-600">Step 1 — upload bundle:</p>
+            <pre className="bg-gray-900 text-gray-100 rounded-lg p-3 text-xs overflow-x-auto"><code>{`curl -X POST https://admin.agl-store.cyou/api/developer/upload-bundle \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "file=@com.example.MyApp.flatpak"`}</code></pre>
+            <p className="text-xs text-gray-600 mt-2">Step 2 — submit metadata:</p>
+            <pre className="bg-gray-900 text-gray-100 rounded-lg p-3 text-xs overflow-x-auto"><code>{`curl -X POST https://admin.agl-store.cyou/api/developer/submit \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"app_id":"com.example.MyApp","name":"My App","summary":"...","categories":["Utility"]}'`}</code></pre>
+          </div>
+        </details>
       </section>
 
       {/* Section 6: Review Process */}
