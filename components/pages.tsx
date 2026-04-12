@@ -21,6 +21,8 @@ import {
   BookOpen,
   Terminal,
   AlertTriangle,
+  Send,
+  Github,
 } from 'lucide-react'
 import {
   getToken,
@@ -1150,6 +1152,13 @@ export const DeveloperPortalPage: React.FC = () => {
   const [mySubs, setMySubs] = useState<AppSubmission[]>([])
   const [mySubsLoading, setMySubsLoading] = useState(false)
 
+  // Trust publisher request
+  const [trustRequestStatus, setTrustRequestStatus] = useState<string | null>(null)
+  const [trustForm, setTrustForm] = useState({ reason: '', github: '', portfolio: '' })
+  const [trustFormOpen, setTrustFormOpen] = useState(false)
+  const [trustSubmitting, setTrustSubmitting] = useState(false)
+  const [trustMsg, setTrustMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
   const { user: storedAuthUser, setUser: setStoredUser, token } = useAuthStore()
 
   const loadUser = useCallback(async () => {
@@ -1246,6 +1255,19 @@ export const DeveloperPortalPage: React.FC = () => {
         ? prev.categories.filter(c => c !== cat)
         : [...prev.categories, cat],
     }))
+  }
+
+  async function handleTrustSubmit() {
+    if (!trustForm.reason.trim()) return
+    setTrustSubmitting(true); setTrustMsg(null)
+    try {
+      await requestTrustedPublisher(trustForm.reason, trustForm.github || undefined, trustForm.portfolio || undefined)
+      setTrustRequestStatus('pending')
+      setTrustFormOpen(false)
+      setTrustMsg({ type: 'ok', text: 'Request submitted! An admin will review it shortly.' })
+    } catch (e) {
+      setTrustMsg({ type: 'err', text: e instanceof Error ? e.message : 'Submission failed' })
+    } finally { setTrustSubmitting(false) }
   }
 
   function addScreenshot() {
@@ -1482,6 +1504,92 @@ export const DeveloperPortalPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      </section>
+
+      {/* Publisher Signing Key / Trust Request */}
+      <section className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><ShieldCheck size={18} /> Publisher Signing Key</h2>
+        </div>
+        <div className="p-6">
+          {user.is_trusted_publisher ? (
+            <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm">
+              <ShieldCheck size={16} /> You are a Trusted Publisher. Your apps carry the Verified badge and a personal signing key.
+            </div>
+          ) : trustRequestStatus === 'pending' ? (
+            <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm">
+              <Send size={15} /> Your request is under review. An admin will respond soon.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Trusted Publishers get a personal GPG signing key, a Verified badge on all apps, and a 1-year listing instead of 1 day.
+                Submit a request below — an admin will review it.
+              </p>
+              {trustMsg && (
+                <div className={`rounded-lg px-4 py-3 text-sm ${trustMsg.type === 'ok' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                  {trustMsg.text}
+                </div>
+              )}
+              {!trustFormOpen ? (
+                <button
+                  onClick={() => setTrustFormOpen(true)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                >
+                  <Send size={14} /> Request Trusted Publisher Status
+                </button>
+              ) : (
+                <div className="space-y-3 border border-gray-200 rounded-xl p-5 bg-gray-50">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Why should you be a Trusted Publisher? <span className="text-red-500">*</span></label>
+                    <textarea
+                      value={trustForm.reason}
+                      onChange={e => setTrustForm(p => ({ ...p, reason: e.target.value }))}
+                      placeholder="Describe your project, experience, and how you'll use the store (e.g. I am a student at PENS building open-source tools for AGL, my apps are actively maintained...)"
+                      rows={4}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none bg-white"
+                    />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1"><Github size={12} /> GitHub Profile URL</label>
+                      <input
+                        value={trustForm.github}
+                        onChange={e => setTrustForm(p => ({ ...p, github: e.target.value }))}
+                        placeholder="https://github.com/yourusername"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Portfolio / Website</label>
+                      <input
+                        value={trustForm.portfolio}
+                        onChange={e => setTrustForm(p => ({ ...p, portfolio: e.target.value }))}
+                        placeholder="https://yoursite.com"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={handleTrustSubmit}
+                      disabled={trustSubmitting || !trustForm.reason.trim()}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                    >
+                      <Send size={14} /> {trustSubmitting ? 'Submitting…' : 'Submit Request'}
+                    </button>
+                    <button
+                      onClick={() => { setTrustFormOpen(false); setTrustMsg(null) }}
+                      className="px-4 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </section>
@@ -1979,14 +2087,26 @@ export const UsersPage: React.FC = () => {
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">{user.app_count ?? 0}</td>
                 <td className="px-4 py-3">
-                  {user.is_trusted_publisher
-                    ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">✓ Trusted</span>
-                    : <span className="text-xs text-gray-400">—</span>}
+                  {user.is_trusted_publisher ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">✓ Trusted</span>
+                  ) : user.trust_request_status === 'pending' ? (
+                    <div>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">Requested</span>
+                      {user.trust_request_reason && (
+                        <p className="text-xs text-gray-500 mt-1 max-w-xs truncate" title={user.trust_request_reason}>{user.trust_request_reason}</p>
+                      )}
+                      {user.trust_request_github && (
+                        <a href={user.trust_request_github} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline block mt-0.5 truncate max-w-xs">{user.trust_request_github}</a>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right">
                   {user.is_trusted_publisher
                     ? <button onClick={() => handleUntrust(user.id)} disabled={trustingId === user.id} className="text-xs px-3 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">{trustingId === user.id ? '…' : 'Revoke Trust'}</button>
-                    : <button onClick={() => handleTrust(user.id)} disabled={trustingId === user.id} className="text-xs px-3 py-1 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 transition-colors">{trustingId === user.id ? '…' : 'Trust Publisher'}</button>}
+                    : <button onClick={() => handleTrust(user.id)} disabled={trustingId === user.id} className={`text-xs px-3 py-1 rounded-lg border disabled:opacity-50 transition-colors ${user.trust_request_status === 'pending' ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 font-semibold' : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'}`}>{trustingId === user.id ? '…' : user.trust_request_status === 'pending' ? '⚡ Approve Request' : 'Trust Publisher'}</button>}
                 </td>
               </tr>
             ))}

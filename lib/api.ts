@@ -273,3 +273,19 @@ export async function trustPublisher(userId: number): Promise<void> {
 export async function untrustPublisher(userId: number): Promise<void> {
   await apiFetchJson(`/admin/users/${userId}/untrust`, { method: 'POST' })
 }
+
+export async function requestTrustedPublisher(reason: string, github_url?: string, portfolio_url?: string) {
+  const res = await fetch(`${BASE}/auth/request-trusted-publisher`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify({ reason, github_url, portfolio_url }),
+  })
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Request failed') }
+  return res.json()
+}
+
+export async function getMyTrustRequest() {
+  const res = await fetch(`${BASE}/auth/my-trust-request`, { headers: authHeader() })
+  if (!res.ok) throw new Error('Failed to fetch trust request status')
+  return res.json()
+}
