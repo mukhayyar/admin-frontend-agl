@@ -971,8 +971,13 @@ export const SubmissionDetailsPage: React.FC = () => {
             <h2 className="font-semibold text-gray-900 mb-4">Submission Info</h2>
             <dl className="space-y-3 text-sm">
               <div>
-                <dt className="text-gray-400 text-xs mb-0.5">Developer (user ID)</dt>
-                <dd className="font-medium text-gray-700">{sub.user_id}</dd>
+                <dt className="text-gray-400 text-xs mb-0.5">Developer</dt>
+                <dd className="font-medium text-gray-700">
+                  {sub.developer?.name || sub.developer_name || `User #${sub.user_id}`}
+                  {sub.developer?.email && (
+                    <span className="block text-xs text-gray-400 font-normal">{sub.developer.email}</span>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="text-gray-400 text-xs mb-0.5">App Type</dt>
@@ -1141,7 +1146,7 @@ export const ReviewQueuePage: React.FC = () => {
                 <div className="min-w-0">
                   <div className="font-semibold text-gray-900">{sub.name}</div>
                   <div className="text-xs text-gray-400 font-mono mt-0.5">{sub.app_id}</div>
-                  <div className="text-xs text-gray-400 mt-1">Submitted {fmtDate(sub.submitted_at)}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">by <span className="text-gray-600 font-medium">{sub.developer_name || `User #${sub.user_id}`}</span> · {fmtDate(sub.submitted_at)}</div>
                   {sub.summary && (
                     <p className="text-sm text-gray-600 mt-2 line-clamp-2">{sub.summary}</p>
                   )}
@@ -1219,7 +1224,7 @@ export const ReviewHistoryPage: React.FC = () => {
                   <td className="px-6 py-3 font-medium text-gray-900">
                     <Link to={`/admin/submissions/${sub.id}`} className="hover:text-indigo-600">{sub.name}</Link>
                   </td>
-                  <td className="px-6 py-3 text-gray-500">User {sub.user_id}</td>
+                  <td className="px-6 py-3 text-gray-500">{sub.developer_name || `User #${sub.user_id}`}</td>
                   <td className="px-6 py-3"><StatusBadge status={sub.status} /></td>
                   <td className="px-6 py-3 text-gray-500">{fmtDate(sub.reviewed_at)}</td>
                   <td className="px-6 py-3 text-gray-500 max-w-xs truncate">{sub.rejection_reason ?? '—'}</td>

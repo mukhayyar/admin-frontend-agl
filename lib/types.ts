@@ -66,13 +66,31 @@ export interface AppOut {
 export interface AppSubmission {
   id: number
   app_id: string
+  name: string
   app_name: string
   status: string
   submitted_at: string
   reviewed_at: string | null
   review_notes: string | null
+  rejection_reason: string | null
   flatpak_ref: string | null
   version: string | null
+  user_id: number
+  developer_name: string | null
+  developer?: { id: number | null; name: string | null; email: string | null }
+  summary: string | null
+  description: string | null
+  icon: string | null
+  homepage: string | null
+  license: string | null
+  app_type: string | null
+  categories: string[] | null
+  screenshots: string[] | null
+  tags: string[]
+  scan_result?: Record<string, unknown> | null
+  scan_verdict?: string | null
+  scan_status?: string | null
+  scan_at?: string | null
 }
 
 export interface AdminStats {
