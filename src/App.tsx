@@ -14,6 +14,7 @@ import {
   ReviewQueuePage,
   RatingsReviewsPage,
   DeveloperPortalPage,
+  DeveloperGuidePage,
   ResetPasswordPage,
   VerifyEmailPage,
   UsersPage,
@@ -42,6 +43,7 @@ export default function App() {
 
         {/* Developer section */}
         <Route path="/developer/portal" element={<AdminTopNavLayout title="Developer Portal"><DeveloperPortalPage /></AdminTopNavLayout>} />
+        <Route path="/developer/guide" element={<AdminTopNavLayout title="Developer Guide"><DeveloperGuidePage /></AdminTopNavLayout>} />
 
         {/* Review queue */}
         <Route path="/review-queue" element={<ReviewQueueLayout><ReviewQueuePage /></ReviewQueueLayout>} />
