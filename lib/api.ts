@@ -325,6 +325,7 @@ export interface ScanResult {
   summary: string
   findings: ScanFinding[]
   scanned_at?: string
+  submission_id?: number
 }
 
 export async function triggerScan(submissionId: number): Promise<ScanResult> {

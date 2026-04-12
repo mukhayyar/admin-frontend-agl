@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   Star,
   ChevronLeft,
+  ChevronDown,
   BookOpen,
   Terminal,
   AlertTriangle,
@@ -604,60 +605,159 @@ export const SubmissionsListPage: React.FC = () => {
 // ── Scan Result Panel ────────────────────────────────────────────────────────
 
 function ScanResultPanel({ result }: { result: ScanResult }) {
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({})
+
   const verdictConfig: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-    PASS:        { label: 'Pass',        cls: 'bg-green-50 border-green-200',  icon: <ShieldCheck size={18} className="text-green-600" /> },
-    WARN:        { label: 'Warning',     cls: 'bg-amber-50 border-amber-200',  icon: <ShieldAlert size={18} className="text-amber-600" /> },
-    FAIL:        { label: 'Fail',        cls: 'bg-red-50 border-red-200',      icon: <ShieldX size={18} className="text-red-600" /> },
-    NOT_SCANNED: { label: 'Not Scanned', cls: 'bg-gray-50 border-gray-200',   icon: <ShieldCheck size={18} className="text-gray-400" /> },
+    PASS:        { label: 'Pass',    cls: 'bg-green-50 border-green-200',  icon: <ShieldCheck size={20} className="text-green-600" /> },
+    WARN:        { label: 'Warning', cls: 'bg-amber-50 border-amber-200',  icon: <ShieldAlert size={20} className="text-amber-600" /> },
+    BLOCK:       { label: 'Blocked', cls: 'bg-red-50 border-red-200',      icon: <ShieldX size={20} className="text-red-600" /> },
+    FAIL:        { label: 'Fail',    cls: 'bg-red-50 border-red-200',      icon: <ShieldX size={20} className="text-red-600" /> },
+    NOT_SCANNED: { label: 'Not Scanned', cls: 'bg-gray-50 border-gray-200', icon: <ShieldCheck size={20} className="text-gray-400" /> },
   }
   const cfg = verdictConfig[result.verdict] ?? verdictConfig['NOT_SCANNED']
 
   const severityColor: Record<string, string> = {
-    high:   'bg-red-100 text-red-700',
-    medium: 'bg-amber-100 text-amber-700',
-    low:    'bg-blue-100 text-blue-700',
-    info:   'bg-gray-100 text-gray-600',
+    critical: 'bg-red-100 text-red-700 border-red-200',
+    high:     'bg-orange-100 text-orange-700 border-orange-200',
+    medium:   'bg-amber-100 text-amber-700 border-amber-200',
+    low:      'bg-blue-100 text-blue-700 border-blue-200',
+    info:     'bg-gray-100 text-gray-500 border-gray-200',
   }
 
+  const severityOrder: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 }
+
+  // Separate source/info findings from real findings
+  const sourceFindings = (result.findings ?? []).filter(f => f.category === 'source')
+  const realFindings = (result.findings ?? [])
+    .filter(f => f.category !== 'source')
+    .sort((a, b) => (severityOrder[a.severity] ?? 5) - (severityOrder[b.severity] ?? 5))
+
+  // Group by category
+  const grouped = realFindings.reduce<Record<string, typeof realFindings>>((acc, f) => {
+    const cat = f.category ?? 'other'
+    if (!acc[cat]) acc[cat] = []
+    acc[cat].push(f)
+    return acc
+  }, {})
+
+  const categoryLabel: Record<string, string> = {
+    manifest: 'Manifest & Permissions',
+    permissions: 'Sandbox Permissions',
+    sources: 'Build Sources',
+    build_commands: 'Build Commands',
+    clamav: 'ClamAV Malware Scan',
+    trivy: 'Trivy CVE Scan',
+    binary: 'Binary Hardening (checksec)',
+    other: 'Other',
+  }
+
+  const worstSeverity = (findings: typeof realFindings) => {
+    const sevs = findings.map(f => severityOrder[f.severity] ?? 5)
+    const worst = Math.min(...sevs)
+    return Object.entries(severityOrder).find(([, v]) => v === worst)?.[0] ?? 'INFO'
+  }
+
+  function toggle(cat: string) {
+    setOpenCategories(prev => ({ ...prev, [cat]: !prev[cat] }))
+  }
+
+  const actionableCount = realFindings.filter(f => f.severity !== 'INFO').length
+
   return (
-    <div className={`rounded-xl border p-5 space-y-4 ${cfg.cls}`}>
-      <div className="flex items-center gap-3">
+    <div className={`rounded-xl border ${cfg.cls} overflow-hidden`}>
+      {/* Header */}
+      <div className="flex items-center gap-3 p-5 border-b border-inherit">
         {cfg.icon}
-        <div>
-          <h2 className="font-semibold text-gray-900 text-sm">Security Scan — {cfg.label}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">{result.summary}</p>
-        </div>
-        <div className="ml-auto text-right">
-          <span className="text-xs text-gray-400">Risk score</span>
-          <div className={`text-lg font-bold ${result.risk_score >= 70 ? 'text-red-600' : result.risk_score >= 40 ? 'text-amber-600' : 'text-green-600'}`}>
-            {result.risk_score}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="font-bold text-gray-900">Security Scan — {cfg.label}</h2>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-bold border ${
+              result.risk_score >= 30 ? 'bg-red-100 text-red-700 border-red-200' :
+              result.risk_score >= 10 ? 'bg-amber-100 text-amber-700 border-amber-200' :
+              'bg-green-100 text-green-700 border-green-200'
+            }`}>
+              Risk {result.risk_score}/100
+            </span>
+            {actionableCount > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-600 border border-red-200">
+                {actionableCount} issue{actionableCount !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
+          <p className="text-xs text-gray-500 mt-0.5 truncate">{result.summary}</p>
         </div>
+        {result.scanned_at && (
+          <span className="text-xs text-gray-400 shrink-0">Scanned {fmtDate(result.scanned_at)}</span>
+        )}
       </div>
 
-      {result.findings && result.findings.length > 0 ? (
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Findings ({result.findings.length})</h3>
-          {result.findings.map((f, i) => (
-            <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize ${severityColor[f.severity?.toLowerCase()] ?? severityColor['info']}`}>
-                  {f.severity}
-                </span>
-                <span className="text-xs text-gray-400">{f.category}</span>
-              </div>
-              <p className="text-gray-700 font-medium">{f.message}</p>
-              {f.detail && <p className="text-gray-400 text-xs mt-0.5">{f.detail}</p>}
+      {/* Scan sources */}
+      {sourceFindings.length > 0 && (
+        <div className="bg-white/60 border-b border-inherit px-5 py-3 space-y-1.5">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">What was scanned</p>
+          {sourceFindings.map((f, i) => (
+            <div key={i} className="text-xs text-gray-600">
+              <span className="font-medium text-gray-700">{f.message}</span>
+              {f.detail && (
+                <pre className="mt-1 text-gray-400 font-mono text-[10px] whitespace-pre-wrap leading-relaxed">{f.detail}</pre>
+              )}
             </div>
           ))}
         </div>
-      ) : (
-        <p className="text-xs text-gray-400 italic">No findings.</p>
       )}
 
-      {result.scanned_at && (
-        <p className="text-xs text-gray-400">Scanned {fmtDate(result.scanned_at)}</p>
-      )}
+      {/* Grouped collapsible findings */}
+      <div className="divide-y divide-inherit">
+        {Object.entries(grouped).map(([cat, findings]) => {
+          const isOpen = openCategories[cat] ?? (worstSeverity(findings) !== 'INFO')
+          const worst = worstSeverity(findings)
+          const hasIssues = findings.some(f => f.severity !== 'INFO')
+
+          return (
+            <div key={cat} className="bg-white/40">
+              <button
+                onClick={() => toggle(cat)}
+                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-white/60 transition-colors"
+              >
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ${severityColor[worst.toLowerCase()] ?? severityColor['info']}`}>
+                  {worst}
+                </span>
+                <span className="flex-1 text-sm font-medium text-gray-800">
+                  {categoryLabel[cat] ?? cat}
+                </span>
+                <span className="text-xs text-gray-400">{findings.length} finding{findings.length !== 1 ? 's' : ''}</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isOpen && (
+                <div className="px-5 pb-4 space-y-2">
+                  {findings.map((f, i) => (
+                    <div key={i} className={`rounded-lg border p-3 text-sm ${severityColor[f.severity?.toLowerCase()] ?? severityColor['info']} bg-white`}>
+                      <div className="flex items-start gap-2">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase shrink-0 mt-0.5 ${severityColor[f.severity?.toLowerCase()] ?? severityColor['info']}`}>
+                          {f.severity}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-800">{f.message}</p>
+                          {f.detail && (
+                            <pre className="mt-1.5 text-xs text-gray-500 whitespace-pre-wrap font-mono leading-relaxed break-all">{f.detail}</pre>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {Object.keys(grouped).length === 0 && (
+          <div className="px-5 py-4 text-sm text-gray-400 italic bg-white/40">
+            No findings to display.
+          </div>
+        )}
+      </div>
     </div>
   )
 }
