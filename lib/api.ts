@@ -131,7 +131,7 @@ export async function submitApp(body: {
   app_type: string
   categories: string[]
   screenshots: { url: string; caption?: string }[]
-}): Promise<AppSubmission> {
+}): Promise<AppSubmission & { upload_token: string }> {
   return apiFetchJson('/developer/submit', {
     method: 'POST',
     body: JSON.stringify(body),

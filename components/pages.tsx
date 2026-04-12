@@ -1714,7 +1714,8 @@ export const DeveloperPortalPage: React.FC = () => {
   })
   const [submitLoading, setSubmitLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [submitSuccess, setSubmitSuccess] = useState(false)
+  const [submitResult, setSubmitResult] = useState<{id:number,app_id:string,upload_token:string}|null>(null)
+  const submitSuccess = !!submitResult
   const [screenshotUrl, setScreenshotUrl] = useState('')
 
   // My submissions
@@ -1852,13 +1853,13 @@ export const DeveloperPortalPage: React.FC = () => {
   async function handleSubmitApp() {
     setSubmitLoading(true)
     setSubmitError(null)
-    setSubmitSuccess(false)
+    setSubmitResult(null)
     try {
-      await submitApp({
+      const result = await submitApp({
         ...submitForm,
         screenshots: submitForm.screenshots.map(s => ({ url: s.url, caption: s.caption || undefined })),
       })
-      setSubmitSuccess(true)
+      setSubmitResult(result)
       setSubmitForm({
         app_id: '', name: '', summary: '', description: '', icon: '',
         homepage: '', license: '', app_type: 'desktop', categories: [], screenshots: [],
@@ -2185,9 +2186,53 @@ export const DeveloperPortalPage: React.FC = () => {
           <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Package size={18} /> Submit App</h2>
         </div>
         <div className="p-6 space-y-5">
-          {submitSuccess && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700 text-sm flex items-center gap-2">
-              <CheckCircle size={16} /> App submitted successfully! It's now pending review.
+          {submitResult && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-5 space-y-4">
+              <div className="flex items-center gap-2 text-green-800 font-semibold">
+                <CheckCircle size={18} /> Submission #{submitResult.id} created — metadata saved!
+              </div>
+              <div>
+                <p className="text-sm text-green-700 mb-2">
+                  <strong>Next:</strong> Upload your built Flatpak binary to complete the submission.
+                  Run this command in your project directory:
+                </p>
+                <div className="relative">
+                  <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap break-all">
+                    <code>{`# 1. Build your app (if not already done)
+flatpak-builder --force-clean --repo=repo build-dir ${submitResult.app_id}.yml
+
+# 2. Push to AGL Store (token valid 48 h)
+./push-to-agl.sh \\
+  --token ${submitResult.upload_token} \\
+  --app-id ${submitResult.app_id} \\
+  --repo ./repo`}</code>
+                  </pre>
+                  <button
+                    onClick={() => {
+                      const cmd = `flatpak-builder --force-clean --repo=repo build-dir ${submitResult.app_id}.yml
+
+./push-to-agl.sh \\
+  --token ${submitResult.upload_token} \\
+  --app-id ${submitResult.app_id} \\
+  --repo ./repo`
+                      navigator.clipboard.writeText(cmd)
+                    }}
+                    className="absolute top-2 right-2 p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                    title="Copy to clipboard"
+                  >
+                    <Copy size={12} />
+                  </button>
+                </div>
+                <p className="text-xs text-green-600 mt-2">
+                  Don't have the script yet?{' '}
+                  <code className="bg-green-100 px-1 rounded font-mono">
+                    curl -o push-to-agl.sh https://admin.agl-store.cyou/api/push-to-agl.sh {'&&'} chmod +x push-to-agl.sh
+                  </code>
+                </p>
+              </div>
+              <p className="text-xs text-green-600">
+                After upload, an admin will review and scan your app. You'll be notified by email when it goes live.
+              </p>
             </div>
           )}
           {submitError && (
