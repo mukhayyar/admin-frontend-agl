@@ -1805,7 +1805,7 @@ export const DeveloperPortalPage: React.FC = () => {
     setAgreementLoading(true)
     try {
       await acceptPublisherAgreement()
-      setUser(prev => prev ? { ...prev, accepted_publisher_agreement: true } : prev)
+      setUser(prev => prev ? { ...prev, accepted_publisher_agreement: true, accepted_publisher_agreement_at: new Date().toISOString() } : prev)
     } catch { /* ignore */ }
     finally { setAgreementLoading(false) }
   }
