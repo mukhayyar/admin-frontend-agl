@@ -275,19 +275,14 @@ export async function untrustPublisher(userId: number): Promise<void> {
 }
 
 export async function requestTrustedPublisher(reason: string, github_url?: string, portfolio_url?: string) {
-  const res = await fetch(`${BASE}/auth/request-trusted-publisher`, {
+  return apiFetchJson('/auth/request-trusted-publisher', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeader() },
     body: JSON.stringify({ reason, github_url, portfolio_url }),
   })
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Request failed') }
-  return res.json()
 }
 
 export async function getMyTrustRequest() {
-  const res = await fetch(`${BASE}/auth/my-trust-request`, { headers: authHeader() })
-  if (!res.ok) throw new Error('Failed to fetch trust request status')
-  return res.json()
+  return apiFetchJson('/auth/my-trust-request')
 }
 
 export async function getSubmissionComments(subId: number) {
@@ -381,4 +376,25 @@ export async function revokeApp(appId: string, reason: string): Promise<{ messag
     method: 'POST',
     body: JSON.stringify({ reason }),
   })
+}
+
+// ── Developer GPG Signing Key ─────────────────────────────────────────────
+export interface DevGpgKey {
+  has_key: boolean
+  fingerprint?: string
+  uid?: string
+  public_key?: string
+  created_at?: string
+  expires_at?: string
+  days_until_expiry?: number
+  is_active?: boolean
+  is_trusted_publisher?: boolean
+}
+
+export async function getMyGpgKey(): Promise<DevGpgKey> {
+  return apiFetchJson<DevGpgKey>('/developer/my-gpg-key')
+}
+
+export async function renewMyGpgKey(): Promise<{ message: string; fingerprint: string }> {
+  return apiFetchJson('/developer/my-gpg-key/renew', { method: 'POST' })
 }

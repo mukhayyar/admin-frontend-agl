@@ -28,6 +28,7 @@ import {
   Github,
   MessageCircle,
   X,
+  Download,
 } from 'lucide-react'
 import {
   getToken,
@@ -70,6 +71,9 @@ import {
   addSubmissionComment,
   appealSubmission,
   getMySubmission,
+  getMyGpgKey,
+  renewMyGpgKey,
+  requestTrustedPublisher,
 } from '@/lib/api'
 import type { AuthUser, DevKey, AppSubmission, AdminStats, PlatformStats } from '@/lib/types'
 import type { ScanResult, ScanStatus, AdminUserProfile } from '@/lib/api'
@@ -973,12 +977,14 @@ export const SubmissionDetailsPage: React.FC = () => {
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-semibold text-gray-900 mb-3">Screenshots</h2>
               <div className="grid grid-cols-2 gap-3">
-                {(sub.screenshots ?? []).map((ss, i) => (
+                {(sub.screenshots ?? []).map((ss, i) => {
+                  const ssObj = typeof ss === 'string' ? { url: ss, caption: null } : ss as { url: string; caption?: string | null }
+                  return (
                   <div key={i} className="rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
-                    <img src={ss.url} alt={ss.caption ?? `Screenshot ${i + 1}`} className="w-full object-cover" />
-                    {ss.caption && <p className="text-xs text-gray-500 px-2 py-1">{ss.caption}</p>}
+                    <img src={ssObj.url} alt={ssObj.caption ?? `Screenshot ${i + 1}`} className="w-full object-cover" />
+                    {ssObj.caption && <p className="text-xs text-gray-500 px-2 py-1">{ssObj.caption}</p>}
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           )}
@@ -1022,7 +1028,7 @@ export const SubmissionDetailsPage: React.FC = () => {
               {sub.reviewed_at && (
                 <div>
                   <dt className="text-gray-400 text-xs mb-0.5">Reviewed</dt>
-                  <dd className="font-medium text-gray-700">{fmtDate(sub.reviewed_at)}</dd>
+                  <dd className="font-medium text-gray-700">{fmtDate(sub.reviewed_at ?? undefined)}</dd>
                 </div>
               )}
               {sub.homepage && (
@@ -1288,7 +1294,7 @@ export const ReviewHistoryPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-3 text-gray-500">{sub.developer_name || `User #${sub.user_id}`}</td>
                   <td className="px-6 py-3"><StatusBadge status={sub.status} /></td>
-                  <td className="px-6 py-3 text-gray-500">{fmtDate(sub.reviewed_at)}</td>
+                  <td className="px-6 py-3 text-gray-500">{fmtDate(sub.reviewed_at ?? undefined)}</td>
                   <td className="px-6 py-3 text-gray-500 max-w-xs truncate">{sub.rejection_reason ?? '—'}</td>
                 </tr>
               ))}
@@ -1328,7 +1334,7 @@ export const AnalyticsPage: React.FC = () => {
   const bigNumbers = [
     { label: 'Total Apps', value: platformStats?.total_apps ?? adminStats?.total_apps ?? '—' },
     { label: 'Total Users', value: platformStats?.total_users ?? adminStats?.total_users ?? '—' },
-    { label: 'Categories', value: platformStats?.total_categories ?? '—' },
+    { label: 'Categories', value: (platformStats as any)?.total_categories ?? '—' },
     { label: 'Submissions', value: adminStats?.total_submissions ?? '—' },
   ]
 
@@ -1724,6 +1730,9 @@ export const DeveloperPortalPage: React.FC = () => {
   const [detailSubId, setDetailSubId] = useState<number | null>(null)
 
   // Trust publisher request
+  const [gpgKey, setGpgKey] = useState<{fingerprint?:string,uid?:string,expires_at?:string,days_until_expiry?:number,is_active?:boolean}|null>(null)
+  const [gpgKeyLoading, setGpgKeyLoading] = useState(false)
+  const [gpgKeyError, setGpgKeyError] = useState<string|null>(null)
   const [trustRequestStatus, setTrustRequestStatus] = useState<string | null>(null)
   const [trustForm, setTrustForm] = useState({ reason: '', github: '', portfolio: '' })
   const [trustFormOpen, setTrustFormOpen] = useState(false)
@@ -1760,14 +1769,21 @@ export const DeveloperPortalPage: React.FC = () => {
     finally { setMySubsLoading(false) }
   }, [])
 
+  const loadGpgKey = useCallback(async () => {
+    setGpgKeyLoading(true); setGpgKeyError(null)
+    try { const k = await getMyGpgKey(); setGpgKey(k.has_key ? k : null) }
+    catch { setGpgKeyError('Failed to load signing key') }
+    finally { setGpgKeyLoading(false) }
+  }, [])
+
   useEffect(() => {
     loadUser()
     getCategories().then(setCategories).catch(() => [])
   }, [loadUser])
 
   useEffect(() => {
-    if (user) { loadKeys(); loadMySubs() }
-  }, [user, loadKeys, loadMySubs])
+    if (user) { loadKeys(); loadMySubs(); loadGpgKey() }
+  }, [user, loadKeys, loadMySubs, loadGpgKey])
 
   async function handleGhLogin() {
     if (!ghToken.trim()) return
@@ -1977,7 +1993,7 @@ export const DeveloperPortalPage: React.FC = () => {
       </section>
 
       {/* Publisher agreement */}
-      {!user.accepted_publisher_agreement && (
+      {!user.accepted_publisher_agreement_at && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
           <div className="flex items-start gap-3">
             <ShieldCheck className="text-amber-600 mt-0.5 shrink-0" size={20} />
@@ -2076,7 +2092,7 @@ export const DeveloperPortalPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-gray-500">{fmtDate(k.created_at)}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(k.last_used_at)}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(k.last_used_at ?? undefined)}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button
                         onClick={() => handleRevokeKey(k.id)}
@@ -2094,85 +2110,123 @@ export const DeveloperPortalPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Publisher Signing Key / Trust Request */}
+      {/* Signing Key */}
       <section className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="px-6 py-5 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><ShieldCheck size={18} /> Publisher Signing Key</h2>
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><ShieldCheck size={18} /> Signing Key</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Every app upload must be signed with your personal AGL signing key.</p>
         </div>
-        <div className="p-6">
-          {user.is_trusted_publisher ? (
-            <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm">
-              <ShieldCheck size={16} /> You are a Trusted Publisher. Your apps carry the Verified badge and a personal signing key.
-            </div>
-          ) : trustRequestStatus === 'pending' ? (
-            <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm">
-              <Send size={15} /> Your request is under review. An admin will respond soon.
+        <div className="p-6 space-y-5">
+          {gpgKeyLoading ? (
+            <LoadingPulse rows={2} />
+          ) : gpgKeyError ? (
+            <p className="text-sm text-red-600">{gpgKeyError}</p>
+          ) : gpgKey ? (
+            <div className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-1">Fingerprint</p>
+                  <p className="font-mono text-xs text-gray-800 break-all">{gpgKey.fingerprint}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 mb-1">Expires</p>
+                  <p className="text-sm text-gray-800">
+                    {gpgKey.expires_at ? new Date(gpgKey.expires_at).toLocaleDateString() : 'Never'}
+                    {gpgKey.days_until_expiry !== undefined && gpgKey.days_until_expiry <= 30 && (
+                      <span className="ml-2 text-amber-600 font-medium text-xs">({gpgKey.days_until_expiry}d left)</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href="/api/developer/my-gpg-key/download"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                  download
+                >
+                  <Download size={14} /> Download Signing Key
+                </a>
+                {user.is_trusted_publisher && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await renewMyGpgKey()
+                        loadGpgKey()
+                      } catch { /* ignore */ }
+                    }}
+                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+                  >
+                    <RefreshCw size={14} /> Renew Key
+                  </button>
+                )}
+              </div>
+              <details className="text-sm">
+                <summary className="cursor-pointer text-indigo-600 hover:underline font-medium">How to set up and use your signing key</summary>
+                <div className="mt-3 space-y-2 text-gray-700 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <p className="font-semibold text-gray-800">One-time setup:</p>
+                  <pre className="bg-gray-900 text-gray-100 rounded p-3 text-xs overflow-x-auto whitespace-pre">{`# 1. Download the key (button above), then import it:
+gpg --import agl-signing-key-*.gpg
+
+# 2. Verify it was imported:
+gpg --list-secret-keys | grep "AGL Developer"`}</pre>
+                  <p className="font-semibold text-gray-800 pt-1">Signing and uploading (handled automatically by push-to-agl.sh):</p>
+                  <pre className="bg-gray-900 text-gray-100 rounded p-3 text-xs overflow-x-auto whitespace-pre">{`# The push script signs your bundle automatically.
+# Manual signing if needed:
+gpg --armor --detach-sign --default-key ${gpgKey.fingerprint?.slice(-16)} bundle.flatpak
+# This creates bundle.flatpak.asc (the signature file)`}</pre>
+                </div>
+              </details>
             </div>
           ) : (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Trusted Publishers get a personal GPG signing key, a Verified badge on all apps, and a 1-year listing instead of 1 day.
-                Submit a request below — an admin will review it.
+            <div className="text-sm text-gray-600">
+              <p>No signing key yet. Click below to generate yours.</p>
+              <button
+                onClick={loadGpgKey}
+                disabled={gpgKeyLoading}
+                className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                <ShieldCheck size={14} /> Generate My Signing Key
+              </button>
+            </div>
+          )}
+
+          {/* Trusted Publisher Request (still shown below key info) */}
+          {!user.is_trusted_publisher && (
+            <div className="pt-4 border-t border-gray-100">
+              <p className="text-xs text-gray-500 mb-3">
+                <strong>Want a Verified badge?</strong> Trusted Publishers get a Verified badge on all their apps and a 1-year listing.
               </p>
-              {trustMsg && (
-                <div className={`rounded-lg px-4 py-3 text-sm ${trustMsg.type === 'ok' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-                  {trustMsg.text}
+              {trustRequestStatus === 'pending' ? (
+                <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm">
+                  <Send size={15} /> Your trusted publisher request is under review.
                 </div>
-              )}
-              {!trustFormOpen ? (
-                <button
-                  onClick={() => setTrustFormOpen(true)}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
-                >
-                  <Send size={14} /> Request Trusted Publisher Status
-                </button>
               ) : (
-                <div className="space-y-3 border border-gray-200 rounded-xl p-5 bg-gray-50">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Why should you be a Trusted Publisher? <span className="text-red-500">*</span></label>
-                    <textarea
-                      value={trustForm.reason}
-                      onChange={e => setTrustForm(p => ({ ...p, reason: e.target.value }))}
-                      placeholder="Describe your project, experience, and how you'll use the store (e.g. I am a student at PENS building open-source tools for AGL, my apps are actively maintained...)"
-                      rows={4}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none bg-white"
-                    />
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1"><Github size={12} /> GitHub Profile URL</label>
-                      <input
-                        value={trustForm.github}
-                        onChange={e => setTrustForm(p => ({ ...p, github: e.target.value }))}
-                        placeholder="https://github.com/yourusername"
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                      />
+                <div className="space-y-3">
+                  {trustMsg && (
+                    <div className={`rounded-lg px-4 py-3 text-sm ${trustMsg.type === 'ok' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                      {trustMsg.text}
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Portfolio / Website</label>
-                      <input
-                        value={trustForm.portfolio}
-                        onChange={e => setTrustForm(p => ({ ...p, portfolio: e.target.value }))}
-                        placeholder="https://yoursite.com"
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                      />
+                  )}
+                  {!trustFormOpen ? (
+                    <button onClick={() => setTrustFormOpen(true)} className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-200 transition-colors flex items-center gap-2">
+                      <Send size={14} /> Request Trusted Publisher Status
+                    </button>
+                  ) : (
+                    <div className="space-y-3 border border-gray-200 rounded-xl p-5 bg-gray-50">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Why should you be a Trusted Publisher? <span className="text-red-500">*</span></label>
+                        <textarea value={trustForm.reason} onChange={e => setTrustForm(p => ({ ...p, reason: e.target.value }))} placeholder="Describe your project and experience…" rows={3} className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none bg-white" />
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <input value={trustForm.github} onChange={e => setTrustForm(p => ({ ...p, github: e.target.value }))} placeholder="GitHub profile URL" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                        <input value={trustForm.portfolio} onChange={e => setTrustForm(p => ({ ...p, portfolio: e.target.value }))} placeholder="Portfolio URL" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={handleTrustSubmit} disabled={trustSubmitting || !trustForm.reason.trim()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"><Send size={14} /> {trustSubmitting ? 'Submitting…' : 'Submit Request'}</button>
+                        <button onClick={() => { setTrustFormOpen(false); setTrustMsg(null) }} className="px-4 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={handleTrustSubmit}
-                      disabled={trustSubmitting || !trustForm.reason.trim()}
-                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-                    >
-                      <Send size={14} /> {trustSubmitting ? 'Submitting…' : 'Submit Request'}
-                    </button>
-                    <button
-                      onClick={() => { setTrustFormOpen(false); setTrustMsg(null) }}
-                      className="px-4 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2542,7 +2596,7 @@ export const SettingsPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">Publisher agreement</dt>
-                <dd>{user.accepted_publisher_agreement ? <CheckCircle size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-300" />}</dd>
+                <dd>{user.accepted_publisher_agreement_at ? <CheckCircle size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-300" />}</dd>
               </div>
             </dl>
           </div>

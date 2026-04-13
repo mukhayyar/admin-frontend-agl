@@ -40,12 +40,16 @@ export interface AuthUser {
   auth_provider: string
   email_verified: boolean
   accepted_publisher_agreement_at: string | null
+  accepted_publisher_agreement: boolean
+  default_account_login: string | null
 }
 
 export interface DevKey {
   id: number
   name: string
   token?: string
+  prefix?: string
+  is_active?: boolean
   created_at: string
   last_used_at: string | null
 }
@@ -85,7 +89,7 @@ export interface AppSubmission {
   license: string | null
   app_type: string | null
   categories: string[] | null
-  screenshots: string[] | null
+  screenshots: Array<{ url: string; caption?: string | null }> | string[] | null
   tags: string[]
   scan_result?: Record<string, unknown> | null
   scan_verdict?: string | null
