@@ -1993,7 +1993,7 @@ export const DeveloperPortalPage: React.FC = () => {
       </section>
 
       {/* Publisher agreement */}
-      {!user.accepted_publisher_agreement_at && (
+      {!user.accepted_publisher_agreement && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
           <div className="flex items-start gap-3">
             <ShieldCheck className="text-amber-600 mt-0.5 shrink-0" size={20} />
@@ -2596,7 +2596,7 @@ export const SettingsPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">Publisher agreement</dt>
-                <dd>{user.accepted_publisher_agreement_at ? <CheckCircle size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-300" />}</dd>
+                <dd>{user.accepted_publisher_agreement ? <CheckCircle size={16} className="text-green-500" /> : <XCircle size={16} className="text-gray-300" />}</dd>
               </div>
             </dl>
           </div>
