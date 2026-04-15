@@ -301,22 +301,13 @@ export const LoginPage: React.FC = () => {
 
         {tab === 'github' && (
           <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 text-sm text-gray-600">
-              <p className="font-semibold text-gray-700 mb-1">How to get a token:</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Go to <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-indigo-600 underline">github.com/settings/tokens</a></li>
-                <li>Click "Generate new token (classic)"</li>
-                <li>Select scopes: <code className="bg-gray-200 px-1 rounded">read:user</code>, <code className="bg-gray-200 px-1 rounded">user:email</code></li>
-              </ol>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">GitHub Personal Access Token</label>
-              <input type="password" value={token} onChange={e => setTokenInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleGitHubLogin()} placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-            <button onClick={handleGitHubLogin} disabled={loading || !token.trim()} className="w-full bg-gray-900 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
-              {loading ? <RefreshCw size={16} className="animate-spin" /> : <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>}
-              {loading ? 'Signing in…' : 'Sign in with GitHub'}
-            </button>
+            <a
+              href="/api/auth/github/authorize"
+              className="w-full bg-gray-900 text-white px-4 py-2.5 rounded-lg font-medium text-sm hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+              Continue with GitHub
+            </a>
           </div>
         )}
 
