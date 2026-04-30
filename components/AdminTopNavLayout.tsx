@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, X, LogOut, Code2 } from 'lucide-react'
+import { Menu, X, LogOut, Code2, User } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthStore } from '../lib/stores'
 import { clearToken } from '../lib/api'
@@ -7,16 +7,22 @@ import { clearToken } from '../lib/api'
 const adminLinks = [
   { label: 'Dashboard', path: '/admin/dashboard' },
   { label: 'Submissions', path: '/admin/submissions' },
+  { label: 'Apps', path: '/admin/apps' },
   { label: 'Users', path: '/admin/users' },
   { label: 'Analytics', path: '/admin/analytics' },
   { label: 'Health', path: '/admin/system-health' },
   { label: 'Ratings', path: '/admin/ratings' },
-  { label: 'Settings', path: '/admin/settings' },
+]
+
+// Reviewer role: can only access submissions
+const reviewerLinks = [
+  { label: 'Submissions', path: '/admin/submissions' },
 ]
 
 const devLinks = [
   { label: 'Developer Portal', path: '/developer/portal' },
   { label: 'Developer Guide', path: '/developer/guide' },
+  { label: 'Profile', path: '/developer/profile' },
 ]
 
 export default function AdminTopNavLayout({
@@ -32,7 +38,8 @@ export default function AdminTopNavLayout({
   const { user, logout } = useAuthStore()
   const isActive = (path: string) => pathname.startsWith(path)
   const isDev = pathname.startsWith('/developer')
-  const links = isDev ? devLinks : adminLinks
+  const isReviewer = user?.role === 'reviewer'
+  const links = isDev ? devLinks : isReviewer ? reviewerLinks : adminLinks
 
   function handleLogout() {
     clearToken()
@@ -73,7 +80,15 @@ export default function AdminTopNavLayout({
 
         <div className="hidden lg:flex items-center gap-3">
           {user?.display_name && (
-            <span className="text-xs text-gray-400">{user.display_name}</span>
+            <Link
+              to="/profile"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            >
+              <User size={13} /> {user.display_name}
+            </Link>
+          )}
+          {user?.role === 'reviewer' && (
+            <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full border border-amber-200">Reviewer</span>
           )}
           <button
             onClick={handleLogout}

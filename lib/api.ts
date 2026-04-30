@@ -398,3 +398,57 @@ export async function getMyGpgKey(): Promise<DevGpgKey> {
 export async function renewMyGpgKey(): Promise<{ message: string; fingerprint: string }> {
   return apiFetchJson('/developer/my-gpg-key/renew', { method: 'POST' })
 }
+
+// ── Connected Accounts / Profile ─────────────────────────────────────────────
+
+export interface ConnectedAccount {
+  provider: string
+  login: string | null
+  display_name: string | null
+  avatar_url: string | null
+  email: string | null
+  created_at: string | null
+  last_used: string | null
+}
+
+export async function getConnectedAccounts(): Promise<ConnectedAccount[]> {
+  return apiFetchJson<ConnectedAccount[]>('/auth/connected-accounts')
+}
+
+/** Returns the URL to navigate to in order to start the GitHub link OAuth flow. */
+export function getGithubLinkUrl(): string {
+  const token = getToken()
+  return `${API_URL}/auth/github/link?token=${encodeURIComponent(token ?? '')}`
+}
+
+export interface AdminAppListItem {
+  id: string
+  name: string
+  summary: string | null
+  developer_name: string | null
+  icon: string | null
+  type: string
+  published: boolean
+  is_verified: boolean
+  expires_at: string | null
+  added_at: string | null
+  updated_at: string | null
+  categories: string[]
+  revoked_at: string | null
+  revocation_reason: string | null
+}
+
+export async function listAdminApps(params?: {
+  status?: string
+  search?: string
+  limit?: number
+  offset?: number
+}): Promise<AdminAppListItem[]> {
+  const qs = new URLSearchParams()
+  if (params?.status && params.status !== 'all') qs.set('status', params.status)
+  if (params?.search) qs.set('search', params.search)
+  if (params?.limit !== undefined) qs.set('limit', String(params.limit))
+  if (params?.offset !== undefined) qs.set('offset', String(params.offset))
+  const query = qs.toString() ? `?${qs.toString()}` : ''
+  return apiFetchJson<AdminAppListItem[]>(`/admin/apps${query}`)
+}

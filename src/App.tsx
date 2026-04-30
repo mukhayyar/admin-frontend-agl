@@ -5,7 +5,6 @@ import ReviewQueueLayout from "../components/ReviewQueueLayout"
 import {
   LandingPage,
   LoginPage,
-  SettingsPage,
   AdminDashboardPage,
   SubmissionsListPage,
   SubmissionDetailsPage,
@@ -20,6 +19,10 @@ import {
   VerifyEmailPage,
   UsersPage,
   AdminDeveloperProfilePage,
+  ProfilePage,
+  AdminAppsPage,
+  DeveloperProfilePage,
+  DeveloperSubmissionDetailPage,
 } from "../components/pages"
 import { useAuthStore } from "../lib/stores"
 import { getAuthUser } from "../lib/api"
@@ -66,8 +69,22 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   if (!token) {
     return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
   }
-  // If user loaded and not admin — redirect to dev portal
   if (user && user.role !== "admin") {
+    // Reviewers go to their allowed page; others to dev portal
+    if (user.role === "reviewer") return <Navigate to="/admin/submissions" replace />
+    return <Navigate to="/developer/portal" replace />
+  }
+  return <>{children}</>
+}
+
+/** Requires role === "admin" OR "reviewer". */
+function ReviewerRoute({ children }: { children: React.ReactNode }) {
+  const { token, user } = useAuthStore()
+  const location = useLocation()
+  if (!token) {
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
+  }
+  if (user && user.role !== "admin" && user.role !== "reviewer") {
     return <Navigate to="/developer/portal" replace />
   }
   return <>{children}</>
@@ -88,19 +105,24 @@ export default function App() {
 
           {/* Admin section — requires admin role */}
           <Route path="/admin/dashboard" element={<AdminRoute><AdminTopNavLayout><AdminDashboardPage /></AdminTopNavLayout></AdminRoute>} />
-          <Route path="/admin/submissions" element={<AdminRoute><AdminTopNavLayout><SubmissionsListPage /></AdminTopNavLayout></AdminRoute>} />
-          <Route path="/admin/submissions/:id" element={<AdminRoute><AdminTopNavLayout><SubmissionDetailsPage /></AdminTopNavLayout></AdminRoute>} />
+          <Route path="/admin/submissions" element={<ReviewerRoute><AdminTopNavLayout><SubmissionsListPage /></AdminTopNavLayout></ReviewerRoute>} />
+          <Route path="/admin/submissions/:id" element={<ReviewerRoute><AdminTopNavLayout><SubmissionDetailsPage /></AdminTopNavLayout></ReviewerRoute>} />
           <Route path="/admin/analytics" element={<AdminRoute><AdminTopNavLayout><AnalyticsPage /></AdminTopNavLayout></AdminRoute>} />
           <Route path="/admin/system-health" element={<AdminRoute><AdminTopNavLayout><SystemHealthPage /></AdminTopNavLayout></AdminRoute>} />
           <Route path="/admin/review-history" element={<AdminRoute><AdminTopNavLayout><ReviewHistoryPage /></AdminTopNavLayout></AdminRoute>} />
           <Route path="/admin/ratings" element={<AdminRoute><AdminTopNavLayout><RatingsReviewsPage /></AdminTopNavLayout></AdminRoute>} />
-          <Route path="/admin/settings" element={<AdminRoute><AdminTopNavLayout><SettingsPage /></AdminTopNavLayout></AdminRoute>} />
           <Route path="/admin/users" element={<AdminRoute><AdminTopNavLayout><UsersPage /></AdminTopNavLayout></AdminRoute>} />
           <Route path="/admin/users/:id" element={<AdminRoute><AdminTopNavLayout><AdminDeveloperProfilePage /></AdminTopNavLayout></AdminRoute>} />
+          <Route path="/admin/apps" element={<AdminRoute><AdminTopNavLayout title="Apps"><AdminAppsPage /></AdminTopNavLayout></AdminRoute>} />
 
           {/* Developer section — requires any login */}
           <Route path="/developer/portal" element={<ProtectedRoute><AdminTopNavLayout title="Developer Portal"><DeveloperPortalPage /></AdminTopNavLayout></ProtectedRoute>} />
           <Route path="/developer/guide" element={<ProtectedRoute><AdminTopNavLayout title="Developer Guide"><DeveloperGuidePage /></AdminTopNavLayout></ProtectedRoute>} />
+          <Route path="/developer/profile" element={<ProtectedRoute><AdminTopNavLayout title="My Profile"><DeveloperProfilePage /></AdminTopNavLayout></ProtectedRoute>} />
+          <Route path="/developer/submissions/:id" element={<ProtectedRoute><AdminTopNavLayout title="Submission Detail"><DeveloperSubmissionDetailPage /></AdminTopNavLayout></ProtectedRoute>} />
+
+          {/* Profile — any logged-in user */}
+          <Route path="/profile" element={<ProtectedRoute><AdminTopNavLayout title="My Profile"><ProfilePage /></AdminTopNavLayout></ProtectedRoute>} />
 
           {/* Review queue — admin only */}
           <Route path="/review-queue" element={<AdminRoute><ReviewQueueLayout><ReviewQueuePage /></ReviewQueueLayout></AdminRoute>} />

@@ -104,6 +104,9 @@ export interface AdminStats {
   total_submissions: number
   approved_submissions: number
   rejected_submissions: number
+  apps_live?: number
+  revoked_apps?: number
+  expired_apps?: number
 }
 
 export interface PlatformStats {

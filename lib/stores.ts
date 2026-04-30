@@ -30,7 +30,7 @@ export const useAuthStore = create<AuthState>()(
 
 // ── Submissions Store ─────────────────────────────────────────────────────────
 
-type SubmissionFilter = 'all' | 'pending' | 'approved' | 'rejected'
+type SubmissionFilter = 'all' | 'pending' | 'approved' | 'rejected' | 'revoked'
 
 interface SubmissionsState {
   submissions: AppSubmission[]

@@ -29,6 +29,7 @@ import {
   MessageCircle,
   X,
   Download,
+  LogOut,
 } from 'lucide-react'
 import {
   getToken,
@@ -74,9 +75,12 @@ import {
   getMyGpgKey,
   renewMyGpgKey,
   requestTrustedPublisher,
+  getConnectedAccounts,
+  getGithubLinkUrl,
+  listAdminApps,
 } from '@/lib/api'
 import type { AuthUser, DevKey, AppSubmission, AdminStats, PlatformStats } from '@/lib/types'
-import type { ScanResult, ScanStatus, AdminUserProfile } from '@/lib/api'
+import type { ScanResult, ScanStatus, AdminUserProfile, ConnectedAccount, AdminAppListItem } from '@/lib/api'
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -410,6 +414,18 @@ export const AdminDashboardPage: React.FC = () => {
           color: stats.pending_submissions > 0 ? 'amber' : 'gray',
         },
         { icon: <FileText size={24} />, label: 'Total Submissions', value: stats.total_submissions, color: 'emerald' },
+        {
+          icon: <ShieldX size={24} />,
+          label: 'Revoked Apps',
+          value: stats.revoked_apps ?? 0,
+          color: (stats.revoked_apps ?? 0) > 0 ? 'red' : 'gray',
+        },
+        {
+          icon: <AlertTriangle size={24} />,
+          label: 'Expired Apps',
+          value: stats.expired_apps ?? 0,
+          color: (stats.expired_apps ?? 0) > 0 ? 'orange' : 'gray',
+        },
       ]
     : []
 
@@ -419,6 +435,8 @@ export const AdminDashboardPage: React.FC = () => {
     amber: 'bg-amber-100 text-amber-600',
     gray: 'bg-gray-100 text-gray-600',
     emerald: 'bg-emerald-100 text-emerald-600',
+    red: 'bg-red-100 text-red-600',
+    orange: 'bg-orange-100 text-orange-600',
   }
 
   const cardBorderMap: Record<string, string> = {
@@ -529,7 +547,7 @@ export const SubmissionsListPage: React.FC = () => {
 
   useEffect(() => { load() }, [load])
 
-  const filters: SubmissionFilter[] = ['all', 'pending', 'approved', 'rejected']
+  const filters = ['all', 'pending', 'approved', 'rejected', 'revoked'] as const
 
   return (
     <div className="space-y-6">
@@ -1678,6 +1696,7 @@ function SubmissionCommentSection({ subId }: { subId: number }) {
 // ── Developer Portal Page ─────────────────────────────────────────────────────
 
 export const DeveloperPortalPage: React.FC = () => {
+  const navigate = useNavigate()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [ghToken, setGhToken] = useState('')
@@ -2467,7 +2486,7 @@ flatpak-builder --force-clean --repo=repo build-dir ${submitResult.app_id}.yml
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {mySubs.map(sub => (
-                  <tr key={sub.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setDetailSubId(sub.id)}>
+                  <tr key={sub.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/developer/submissions/${sub.id}`)}>
                     <td className="px-4 py-3 font-medium text-gray-900">{sub.name}</td>
                     <td className="px-4 py-3"><StatusBadge status={sub.status} /></td>
                     <td className="px-4 py-3 text-gray-500">{fmtDate(sub.submitted_at)}</td>
@@ -3125,6 +3144,144 @@ flatpak-builder --force-clean --repo=repo build-dir com.example.MyApp.yml
           ))}
         </ul>
       </section>
+
+      {/* Section 7: Security Scan Verdicts */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+          <span className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">7</span>
+          Security Scan Verdicts
+        </h2>
+        <p className="text-sm text-gray-500 mb-5">
+          Every submitted Flatpak bundle is automatically scanned by the AGL security scanner.
+          The scanner checks permissions, build commands, source integrity, ClamAV malware, Trivy CVEs,
+          and ELF binary hardening (checksec). A risk score (0–100) is computed and mapped to one of three verdicts.
+        </p>
+
+        {/* Verdict cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* PASS */}
+          <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">✅</span>
+              <span className="text-lg font-bold text-green-700">PASS</span>
+              <span className="ml-auto text-xs bg-green-100 text-green-600 font-semibold px-2 py-0.5 rounded-full border border-green-200">Score 0–9</span>
+            </div>
+            <p className="text-sm text-green-800 mb-3">App passes all security checks. No significant risks found.</p>
+            <div className="text-xs text-green-700 font-semibold mb-1">Typical for a clean app:</div>
+            <pre className="bg-green-900 text-green-100 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap"><code>{`finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+# ✓ Minimal permissions
+# ✓ All sources have sha256
+# ✓ No suspicious build commands
+# ✓ SDK >= 23.08`}</code></pre>
+            <div className="mt-3 text-xs text-green-700">
+              <strong>Outcome:</strong> Eligible for manual review and approval.
+            </div>
+          </div>
+
+          {/* WARN */}
+          <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">⚠️</span>
+              <span className="text-lg font-bold text-amber-700">WARN</span>
+              <span className="ml-auto text-xs bg-amber-100 text-amber-600 font-semibold px-2 py-0.5 rounded-full border border-amber-200">Score 10–29</span>
+            </div>
+            <p className="text-sm text-amber-800 mb-3">App has elevated-risk permissions or minor issues. Manual review required.</p>
+            <div className="text-xs text-amber-700 font-semibold mb-1">Example triggers:</div>
+            <pre className="bg-amber-900 text-amber-100 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap"><code>{`finish-args:
+  - --filesystem=home   # HIGH +15
+  - --share=network     # MEDIUM +5
+  - --socket=x11        # MEDIUM +5
+# Score = 25 → WARN
+# Reviewer must justify
+# each HIGH permission`}</code></pre>
+            <div className="mt-3 text-xs text-amber-700">
+              <strong>Outcome:</strong> Reviewer sees warning flags. App may be approved with justification.
+            </div>
+          </div>
+
+          {/* BLOCK */}
+          <div className="rounded-xl border-2 border-red-200 bg-red-50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">🚫</span>
+              <span className="text-lg font-bold text-red-700">BLOCK</span>
+              <span className="ml-auto text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full border border-red-200">Score ≥ 30</span>
+            </div>
+            <p className="text-sm text-red-800 mb-3">Critical security issues found. Submission is automatically held.</p>
+            <div className="text-xs text-red-700 font-semibold mb-1">Instant BLOCK triggers:</div>
+            <pre className="bg-red-900 text-red-100 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap"><code>{`finish-args:
+  - --filesystem=host   # CRITICAL +30
+  - --device=all        # CRITICAL +30
+build-commands:
+  - curl url | bash     # CRITICAL +30
+# Any single CRITICAL
+# item → BLOCK
+# ClamAV hit → BLOCK`}</code></pre>
+            <div className="mt-3 text-xs text-red-700">
+              <strong>Outcome:</strong> Submission blocked. Developer must fix and resubmit.
+            </div>
+          </div>
+        </div>
+
+        {/* Scoring table */}
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">Risk Score Table</h3>
+        <div className="overflow-x-auto rounded-lg border border-gray-200 mb-5">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Severity</th>
+                <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Points per finding</th>
+                <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Example</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {[
+                { sev: 'CRITICAL', pts: '+30', color: 'text-red-600 font-bold', ex: '--filesystem=host, curl|bash, ClamAV hit, --device=all' },
+                { sev: 'HIGH',     pts: '+15', color: 'text-orange-600 font-semibold', ex: '--filesystem=home, --socket=session-bus, missing source checksum' },
+                { sev: 'MEDIUM',   pts: '+5',  color: 'text-amber-600', ex: '--share=network, HTTP source, outdated SDK' },
+                { sev: 'LOW',      pts: '+1',  color: 'text-blue-500', ex: 'Git branch pin, non-standard app-id, minor binary hardening' },
+                { sev: 'INFO',     pts: '0',   color: 'text-gray-400', ex: 'Parse success, ClamAV clean, checksec pass' },
+              ].map(row => (
+                <tr key={row.sev} className="hover:bg-gray-50">
+                  <td className={"px-4 py-2.5 " + row.color}>{row.sev}</td>
+                  <td className="px-4 py-2.5 text-gray-700 font-mono">{row.pts}</td>
+                  <td className="px-4 py-2.5 text-gray-500">{row.ex}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* What gets checked */}
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">What the scanner checks</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[
+            { icon: '🔐', title: 'Flatpak Permissions', desc: 'Analyses finish-args for dangerous sandbox escapes (--filesystem=host, --device=all, D-Bus wildcards, LD_PRELOAD, etc.)' },
+            { icon: '🏗️', title: 'Build Commands',      desc: 'Detects remote code execution patterns: curl|bash, base64-decoded payloads, netcat reverse shells, rm -rf /' },
+            { icon: '🔗', title: 'Source Integrity',    desc: 'Flags sources missing sha256/sha512 checksums, HTTP (non-HTTPS) URLs, and downloads from suspicious domains' },
+            { icon: '🦠', title: 'ClamAV Malware',      desc: 'Full filesystem scan of the extracted bundle using ClamAV signature database. Any hit → CRITICAL finding' },
+            { icon: '🔍', title: 'Trivy CVE Scan',      desc: 'Scans bundled libraries and runtimes for known HIGH/CRITICAL CVEs using the Trivy vulnerability database' },
+            { icon: '🛡️', title: 'Binary Hardening',   desc: 'Checks all ELF binaries for PIE, NX, stack canary, and RELRO via checksec. Missing flags reported as LOW severity' },
+          ].map(item => (
+            <div key={item.title} className="flex gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+              <span className="text-xl shrink-0">{item.icon}</span>
+              <div>
+                <div className="text-xs font-semibold text-gray-800 mb-0.5">{item.title}</div>
+                <div className="text-xs text-gray-500">{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 p-4 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+          <strong>💡 Tip for developers:</strong> A WARN verdict does not automatically reject your app — it flags it for closer review.
+          If your app legitimately needs <code className="bg-blue-100 px-1 rounded">--filesystem=home</code> or <code className="bg-blue-100 px-1 rounded">--share=network</code>,
+          explain the use case in your submission description. Reviewers can approve WARN-flagged apps with justification.
+          BLOCK-level findings (CRITICAL score ≥ 30) require you to fix and resubmit.
+        </div>
+      </section>
     </div>
   )
 }
@@ -3262,6 +3419,744 @@ export const AdminDeveloperProfilePage: React.FC = () => {
           </table>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Profile Page ─────────────────────────────────────────────────────────────
+
+export const ProfilePage: React.FC = () => {
+  const { user: storedUser, setUser: setStoredUser } = useAuthStore()
+  const [user, setUser] = useState<AuthUser | null>(storedUser)
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
+  const [loading, setLoading] = useState(!storedUser)
+  const [acctLoading, setAcctLoading] = useState(true)
+  const [hashMsg, setHashMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.includes('github_linked=')) {
+      const msg = decodeURIComponent(hash.split('github_linked=')[1])
+      setHashMsg({ type: 'success', text: msg })
+      window.history.replaceState(null, '', window.location.pathname)
+    } else if (hash.includes('error=')) {
+      const err = decodeURIComponent(hash.split('error=')[1])
+      setHashMsg({ type: 'error', text: err })
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!storedUser) {
+      getAuthUser()
+        .then(u => { setUser(u); setStoredUser(u) })
+        .catch(() => setUser(null))
+        .finally(() => setLoading(false))
+    }
+    getConnectedAccounts()
+      .then(setAccounts)
+      .catch(() => setAccounts([]))
+      .finally(() => setAcctLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (hashMsg?.type === 'success') {
+      getConnectedAccounts().then(setAccounts).catch(() => {})
+      getAuthUser().then(u => { setUser(u); setStoredUser(u) }).catch(() => {})
+    }
+  }, [hashMsg])
+
+  const githubAccount = accounts.find(a => a.provider === 'github')
+
+  const roleBadgeColor: Record<string, string> = {
+    admin: 'bg-purple-100 text-purple-700',
+    reviewer: 'bg-amber-100 text-amber-700',
+    developer: 'bg-blue-100 text-blue-700',
+    user: 'bg-gray-100 text-gray-600',
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">My Profile</h1>
+        <p className="text-gray-500 text-sm">Your account details and connected services.</p>
+      </div>
+
+      {hashMsg && (
+        <div className={`rounded-lg p-4 flex items-start gap-3 text-sm ${
+          hashMsg.type === 'success'
+            ? 'bg-green-50 border border-green-200 text-green-800'
+            : 'bg-red-50 border border-red-200 text-red-800'
+        }`}>
+          {hashMsg.type === 'success'
+            ? <CheckCircle size={16} className="mt-0.5 shrink-0" />
+            : <XCircle size={16} className="mt-0.5 shrink-0" />}
+          <span>{hashMsg.text}</span>
+          <button onClick={() => setHashMsg(null)} className="ml-auto opacity-50 hover:opacity-100"><X size={14} /></button>
+        </div>
+      )}
+
+      {loading ? <LoadingPulse rows={5} /> : !user ? (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <p className="text-gray-500 text-sm mb-4">Not signed in.</p>
+          <Link to="/login" className="text-indigo-600 hover:underline text-sm font-medium">Sign in</Link>
+        </div>
+      ) : (
+        <>
+          {/* Identity card */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="flex items-center gap-4 mb-6">
+              {githubAccount?.avatar_url ? (
+                <img
+                  src={githubAccount.avatar_url}
+                  alt={user.display_name ?? 'avatar'}
+                  className="w-16 h-16 rounded-full border border-gray-200 shadow-sm"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-2xl font-bold text-indigo-600 border border-indigo-200">
+                  {(user.display_name ?? '?')[0].toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">{user.display_name}</h2>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${roleBadgeColor[user.role] ?? roleBadgeColor.user}`}>
+                    {user.role}
+                  </span>
+                  {user.email_verified && (
+                    <span className="text-xs text-green-600 flex items-center gap-1"><ShieldCheck size={12} /> Verified</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <dl className="space-y-0 text-sm divide-y divide-gray-100">
+              {user.email && (
+                <div className="flex justify-between py-3">
+                  <dt className="text-gray-500">Email</dt>
+                  <dd className="font-medium text-gray-800 flex items-center gap-1.5">
+                    {user.email}
+                    {user.email_verified
+                      ? <CheckCircle size={13} className="text-green-500" />
+                      : <XCircle size={13} className="text-amber-400" />}
+                  </dd>
+                </div>
+              )}
+              <div className="flex justify-between py-3">
+                <dt className="text-gray-500">Auth provider</dt>
+                <dd className="font-medium text-gray-800 capitalize">{user.auth_provider}</dd>
+              </div>
+              <div className="flex justify-between py-3">
+                <dt className="text-gray-500">Publisher agreement</dt>
+                <dd>
+                  {user.accepted_publisher_agreement
+                    ? <span className="text-green-600 flex items-center gap-1 text-xs"><CheckCircle size={13} /> Accepted</span>
+                    : <span className="text-gray-400 text-xs">Not accepted</span>}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          {/* Connected accounts */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Github size={16} /> Connected Accounts
+            </h2>
+
+            {acctLoading ? (
+              <div className="animate-pulse h-14 bg-gray-100 rounded-xl" />
+            ) : githubAccount ? (
+              <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
+                {githubAccount.avatar_url && (
+                  <img src={githubAccount.avatar_url} alt={githubAccount.login ?? ''} className="w-10 h-10 rounded-full border border-gray-200" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
+                    <Github size={14} />
+                    @{githubAccount.login}
+                    <span className="text-xs bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full border border-green-200">Connected</span>
+                  </div>
+                  {githubAccount.email && (
+                    <p className="text-xs text-gray-400 mt-0.5">{githubAccount.email}</p>
+                  )}
+                </div>
+                <a
+                  href={`https://github.com/${githubAccount.login}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  title="View GitHub profile"
+                >
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl bg-gray-50 border border-dashed border-gray-300">
+                <div className="flex-1">
+                  <p className="font-medium text-gray-700 flex items-center gap-2"><Github size={15} /> GitHub</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Link your GitHub account to enable OAuth login and publish apps.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { window.location.href = getGithubLinkUrl() }}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
+                >
+                  <Github size={15} /> Connect GitHub
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Admin Apps Page ───────────────────────────────────────────────────────────
+
+type AdminApp = AdminAppListItem
+
+export const AdminAppsPage: React.FC = () => {
+  const [apps, setApps] = useState<AdminApp[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listAdminApps({
+        status: statusFilter,
+        search: search || undefined,
+        limit: 200,
+      })
+      setApps(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load apps')
+    } finally {
+      setLoading(false)
+    }
+  }, [statusFilter, search])
+
+  useEffect(() => { load() }, [load])
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    setSearch(searchInput)
+  }
+
+  const statusFilters = [
+    { key: 'all',         label: 'All' },
+    { key: 'published',   label: 'Published' },
+    { key: 'unpublished', label: 'Unpublished' },
+    { key: 'revoked',     label: 'Revoked' },
+    { key: 'expired',     label: 'Expired' },
+    { key: 'expiring',    label: 'Expiring Soon' },
+  ]
+
+  function statusBadge(app: AdminApp) {
+    if (app.revoked_at) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">Revoked</span>
+    const now = new Date()
+    if (app.expires_at && new Date(app.expires_at) <= now) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 border border-orange-200">Expired</span>
+    if (app.expires_at) {
+      const daysLeft = Math.ceil((new Date(app.expires_at).getTime() - now.getTime()) / 86400000)
+      if (daysLeft <= 30) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">Expiring {daysLeft}d</span>
+    }
+    if (!app.published) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Unpublished</span>
+    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">Live</span>
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">All Apps</h1>
+          <p className="text-gray-500 text-sm">Manage published, unpublished, revoked and expired apps.</p>
+        </div>
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            placeholder="Search apps…"
+            className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-52"
+          />
+          <button type="submit" className="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+            Search
+          </button>
+          {search && (
+            <button type="button" onClick={() => { setSearch(''); setSearchInput('') }} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors">
+              <X size={14} />
+            </button>
+          )}
+        </form>
+      </div>
+
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
+        {statusFilters.map(f => (
+          <button
+            key={f.key}
+            onClick={() => setStatusFilter(f.key)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              statusFilter === f.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        {error ? (
+          <div className="p-6 text-red-700 bg-red-50">{error}</div>
+        ) : loading ? (
+          <div className="p-6"><LoadingPulse rows={8} /></div>
+        ) : apps.length === 0 ? (
+          <EmptyState icon={<Package size={40} />} title="No apps found" desc={`No ${statusFilter === 'all' ? '' : statusFilter + ' '}apps match your search.`} />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">App</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Developer</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expires</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Added</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {apps.map(app => (
+                <tr key={app.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-3">
+                    <div className="flex items-center gap-3">
+                      {app.icon ? (
+                        <img src={app.icon} alt="" className="w-8 h-8 rounded-lg object-cover bg-gray-100" onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center"><Package size={16} className="text-indigo-400" /></div>
+                      )}
+                      <div>
+                        <p className="font-medium text-gray-900">{app.name}</p>
+                        <p className="text-xs text-gray-400 font-mono">{app.id}</p>
+                      </div>
+                    </div>
+                    {app.revocation_reason && (
+                      <p className="mt-1 text-xs text-red-600 ml-11">Reason: {app.revocation_reason}</p>
+                    )}
+                  </td>
+                  <td className="px-6 py-3 text-gray-700">{app.developer_name || '—'}</td>
+                  <td className="px-6 py-3">{statusBadge(app)}</td>
+                  <td className="px-6 py-3 text-gray-500 text-xs">
+                    {app.revoked_at
+                      ? <span className="text-red-600">Revoked {fmtDate(app.revoked_at)}</span>
+                      : app.expires_at
+                        ? fmtDate(app.expires_at)
+                        : <span className="text-gray-300">Never</span>}
+                  </td>
+                  <td className="px-6 py-3 text-gray-500 text-xs">{fmtDate(app.added_at ?? undefined)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <p className="text-xs text-gray-400">{apps.length} app{apps.length !== 1 ? 's' : ''} shown</p>
+    </div>
+  )
+}
+
+// ── Developer Submission Detail Page ────────────────────────────────────────
+
+export const DeveloperSubmissionDetailPage: React.FC = () => {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const subId = Number(id)
+  const [sub, setSub] = useState<AppSubmission | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [comments, setComments] = useState<{ id: number; body: string; created_at: string; author: string; role: string }[]>([])
+  const [commentLoading, setCommentLoading] = useState(true)
+  const [newComment, setNewComment] = useState('')
+  const [posting, setPosting] = useState(false)
+  const [appealing, setAppealing] = useState(false)
+  const [appealMsg, setAppealMsg] = useState('')
+  const [appealStatus, setAppealStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
+  const [appealErrMsg, setAppealErrMsg] = useState('')
+
+  useEffect(() => {
+    if (!subId) return
+    getMySubmission(subId).then(s => setSub(s as AppSubmission)).catch(() => setSub(null)).finally(() => setLoading(false))
+    getSubmissionComments(subId).then(setComments).catch(() => setComments([])).finally(() => setCommentLoading(false))
+  }, [subId])
+
+  async function handleAddComment() {
+    if (!newComment.trim()) return
+    setPosting(true)
+    try {
+      await addSubmissionComment(subId, newComment.trim())
+      setNewComment('')
+      const updated = await getSubmissionComments(subId)
+      setComments(updated)
+    } catch { /* ignore */ }
+    finally { setPosting(false) }
+  }
+
+  async function handleAppeal() {
+    if (!appealMsg.trim()) return
+    setAppealStatus('sending')
+    try {
+      await appealSubmission(subId, appealMsg.trim())
+      setAppealStatus('ok')
+      setAppealing(false)
+      setAppealMsg('')
+      const s = await getMySubmission(subId)
+      setSub(s as AppSubmission)
+    } catch (e) {
+      setAppealStatus('err')
+      setAppealErrMsg(e instanceof Error ? e.message : 'Failed to submit appeal')
+    }
+  }
+
+  if (loading) return <div className="p-8"><LoadingPulse rows={5} /></div>
+  if (!sub) return (
+    <div className="max-w-xl mx-auto mt-12 text-center">
+      <XCircle size={48} className="mx-auto text-gray-300 mb-4" />
+      <h2 className="text-lg font-semibold text-gray-700 mb-2">Submission not found</h2>
+      <button onClick={() => navigate('/developer/portal')} className="text-indigo-600 hover:underline text-sm">Back to portal</button>
+    </div>
+  )
+
+  const statusColor: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-800',
+    approved: 'bg-green-100 text-green-800',
+    rejected: 'bg-red-100 text-red-800',
+    revoked: 'bg-red-900 text-white',
+  }
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      {/* Header */}
+      <div>
+        <button onClick={() => navigate('/developer/portal')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-3 transition-colors">
+          <ChevronLeft size={16} /> Back to Developer Portal
+        </button>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{sub.name}</h1>
+            <p className="text-sm text-gray-400 font-mono mt-0.5">{sub.app_id}</p>
+          </div>
+          <span className={`text-xs font-bold px-3 py-1.5 rounded-full capitalize whitespace-nowrap ${statusColor[sub.status] ?? 'bg-gray-100 text-gray-700'}`}>
+            {sub.status}
+          </span>
+        </div>
+      </div>
+
+      {/* Status alerts */}
+      {sub.status === 'approved' && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+          <CheckCircle size={18} className="text-green-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold text-green-800">Your app has been approved!</p>
+            <p className="text-sm text-green-700 mt-0.5">It is now live in the AGL PENS App Store.</p>
+          </div>
+        </div>
+      )}
+      {sub.status === 'rejected' && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+          <XCircle size={18} className="text-red-600 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-red-800">Submission rejected</p>
+            {sub.rejection_reason && <p className="text-sm text-red-700 mt-1">Reason: {sub.rejection_reason}</p>}
+            {!appealing && appealStatus !== 'ok' && (
+              <button onClick={() => setAppealing(true)} className="mt-3 text-sm text-red-700 underline hover:text-red-900">
+                Submit an appeal
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {appealStatus === 'ok' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 text-blue-800 text-sm">
+          <CheckCircle size={16} className="shrink-0" /> Appeal submitted. An admin will review it.
+        </div>
+      )}
+
+      {/* Appeal form */}
+      {appealing && sub.status === 'rejected' && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-3">
+          <h3 className="font-semibold text-gray-900">Appeal this rejection</h3>
+          <p className="text-sm text-gray-500">Explain why you believe the rejection should be reconsidered. Be specific and professional.</p>
+          <textarea
+            value={appealMsg}
+            onChange={e => setAppealMsg(e.target.value)}
+            rows={4}
+            placeholder="Describe the changes made or reasons for reconsideration…"
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+          />
+          {appealStatus === 'err' && <p className="text-red-600 text-sm">{appealErrMsg}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleAppeal}
+              disabled={appealStatus === 'sending' || !appealMsg.trim()}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {appealStatus === 'sending' ? 'Submitting…' : 'Submit Appeal'}
+            </button>
+            <button onClick={() => setAppealing(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Details */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <h2 className="font-semibold text-gray-900 mb-4">Submission Details</h2>
+        <dl className="space-y-0 text-sm divide-y divide-gray-100">
+          {[
+            ['Submitted', fmtDate(sub.submitted_at)],
+            ['App type', sub.app_type],
+            ['License', sub.license],
+            ['Homepage', sub.homepage],
+            ['Categories', (sub.categories ?? []).join(', ') || '—'],
+          ].map(([k, v]) => v ? (
+            <div key={k} className="flex justify-between py-2.5">
+              <dt className="text-gray-500">{k}</dt>
+              <dd className="font-medium text-gray-800 text-right max-w-xs">{v}</dd>
+            </div>
+          ) : null)}
+        </dl>
+        {sub.summary && <div className="mt-4 pt-4 border-t border-gray-100"><p className="text-xs text-gray-500 mb-1">Summary</p><p className="text-sm text-gray-800">{sub.summary}</p></div>}
+        {sub.description && <div className="mt-3"><p className="text-xs text-gray-500 mb-1">Description</p><p className="text-sm text-gray-800 whitespace-pre-line">{sub.description}</p></div>}
+      </div>
+
+      {/* Comments from admin/moderator */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <MessageCircle size={16} /> Review Comments
+        </h2>
+        {commentLoading ? (
+          <div className="animate-pulse h-12 bg-gray-100 rounded-lg" />
+        ) : comments.length === 0 ? (
+          <p className="text-sm text-gray-400 py-4 text-center">No comments from reviewers yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {comments.map(c => (
+              <div key={c.id} className={`rounded-xl p-4 ${c.role === 'admin' || c.role === 'reviewer' ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="font-semibold text-sm text-gray-800">{c.author}</span>
+                  {(c.role === 'admin' || c.role === 'reviewer') && (
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {c.role}
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-400 ml-auto">{fmtDate(c.created_at)}</span>
+                </div>
+                <p className="text-sm text-gray-700 whitespace-pre-line">{c.body}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Developer reply */}
+        <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+          <p className="text-xs text-gray-500">Reply to reviewers</p>
+          <div className="flex gap-2">
+            <textarea
+              value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              rows={2}
+              placeholder="Ask a question or provide more context…"
+              className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
+            <button
+              onClick={handleAddComment}
+              disabled={posting || !newComment.trim()}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors self-end"
+            >
+              {posting ? 'Sending…' : <Send size={14} />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Developer Profile Page (developer's own profile) ─────────────────────────
+
+export const DeveloperProfilePage: React.FC = () => {
+  const { user: storedUser, setUser: setStoredUser, logout } = useAuthStore()
+  const [user, setUser] = useState<AuthUser | null>(storedUser)
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
+  const [acctLoading, setAcctLoading] = useState(true)
+  const [hashMsg, setHashMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.includes('github_linked=')) {
+      const msg = decodeURIComponent(hash.split('github_linked=')[1])
+      setHashMsg({ type: 'success', text: msg })
+      window.history.replaceState(null, '', window.location.pathname)
+    } else if (hash.includes('error=')) {
+      const err = decodeURIComponent(hash.split('error=')[1])
+      setHashMsg({ type: 'error', text: err })
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!storedUser) {
+      getAuthUser()
+        .then(u => { setUser(u); setStoredUser(u) })
+        .catch(() => setUser(null))
+    }
+    getConnectedAccounts()
+      .then(setAccounts)
+      .catch(() => setAccounts([]))
+      .finally(() => setAcctLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (hashMsg?.type === 'success') {
+      getConnectedAccounts().then(setAccounts).catch(() => {})
+      getAuthUser().then(u => { setUser(u); setStoredUser(u) }).catch(() => {})
+    }
+  }, [hashMsg])
+
+  const githubAccount = accounts.find(a => a.provider === 'github')
+
+  const handleSignOut = () => {
+    logout()
+    navigate('/login')
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">My Profile</h1>
+          <p className="text-gray-500 text-sm">Your developer account and connected services.</p>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          <LogOut size={14} /> Sign out
+        </button>
+      </div>
+
+      {hashMsg && (
+        <div className={`rounded-lg p-4 flex items-start gap-3 text-sm ${
+          hashMsg.type === 'success'
+            ? 'bg-green-50 border border-green-200 text-green-800'
+            : 'bg-red-50 border border-red-200 text-red-800'
+        }`}>
+          {hashMsg.type === 'success'
+            ? <CheckCircle size={16} className="mt-0.5 shrink-0" />
+            : <XCircle size={16} className="mt-0.5 shrink-0" />}
+          <span>{hashMsg.text}</span>
+          <button onClick={() => setHashMsg(null)} className="ml-auto opacity-50 hover:opacity-100"><X size={14} /></button>
+        </div>
+      )}
+
+      {!user ? <LoadingPulse rows={4} /> : (
+        <>
+          {/* Identity */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="flex items-center gap-4 mb-5">
+              {githubAccount?.avatar_url ? (
+                <img src={githubAccount.avatar_url} alt={user.display_name ?? 'avatar'} className="w-16 h-16 rounded-full border border-gray-200 shadow-sm" />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-2xl font-bold text-indigo-600 border border-indigo-200">
+                  {(user.display_name ?? '?')[0].toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">{user.display_name}</h2>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 capitalize">developer</span>
+                  {user.is_trusted_publisher && (
+                    <span className="text-xs text-amber-600 flex items-center gap-1 font-semibold"><ShieldCheck size={12} /> Trusted Publisher</span>
+                  )}
+                  {user.email_verified && (
+                    <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle size={12} /> Verified</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <dl className="space-y-0 text-sm divide-y divide-gray-100">
+              {user.email && (
+                <div className="flex justify-between py-3">
+                  <dt className="text-gray-500">Email</dt>
+                  <dd className="font-medium text-gray-800 flex items-center gap-1.5">
+                    {user.email}
+                    {user.email_verified
+                      ? <CheckCircle size={13} className="text-green-500" />
+                      : <XCircle size={13} className="text-amber-400" />}
+                  </dd>
+                </div>
+              )}
+              <div className="flex justify-between py-3">
+                <dt className="text-gray-500">Publisher agreement</dt>
+                <dd>
+                  {user.accepted_publisher_agreement
+                    ? <span className="text-green-600 flex items-center gap-1 text-xs"><CheckCircle size={13} /> Accepted</span>
+                    : <span className="text-gray-400 text-xs">Not yet accepted</span>}
+                </dd>
+              </div>
+              <div className="flex justify-between py-3">
+                <dt className="text-gray-500">Auth provider</dt>
+                <dd className="font-medium text-gray-800 capitalize">{user.auth_provider}</dd>
+              </div>
+            </dl>
+          </div>
+
+          {/* GitHub */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Github size={16} /> GitHub Account
+            </h2>
+            {acctLoading ? (
+              <div className="animate-pulse h-14 bg-gray-100 rounded-xl" />
+            ) : githubAccount ? (
+              <div className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
+                {githubAccount.avatar_url && (
+                  <img src={githubAccount.avatar_url} alt={githubAccount.login ?? ''} className="w-10 h-10 rounded-full border border-gray-200" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
+                    <Github size={14} />
+                    @{githubAccount.login}
+                    <span className="text-xs bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full border border-green-200">Connected</span>
+                  </div>
+                  {githubAccount.email && <p className="text-xs text-gray-400 mt-0.5">{githubAccount.email}</p>}
+                </div>
+                <a href={`https://github.com/${githubAccount.login}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 transition-colors" title="View GitHub profile">
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl bg-gray-50 border border-dashed border-gray-300">
+                <div className="flex-1">
+                  <p className="font-medium text-gray-700 flex items-center gap-2"><Github size={15} /> GitHub</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Link GitHub to enable OAuth login and publish apps.</p>
+                </div>
+                <button
+                  onClick={() => { window.location.href = getGithubLinkUrl() }}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors whitespace-nowrap"
+                >
+                  <Github size={15} /> Connect GitHub
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
