@@ -153,6 +153,7 @@ export async function updateSubmission(
     license: string
     app_type: string
     categories: string[]
+    tags: string[]
     screenshots: { url: string; caption?: string }[]
   }>
 ): Promise<AppSubmission> {

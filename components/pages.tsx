@@ -3785,11 +3785,73 @@ export const DeveloperSubmissionDetailPage: React.FC = () => {
   const [appealStatus, setAppealStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
   const [appealErrMsg, setAppealErrMsg] = useState('')
 
+  // Edit mode
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
+  const [availCategories, setAvailCategories] = useState<{ name: string; description: string }[]>([])
+  const [editForm, setEditForm] = useState({
+    name: '',
+    summary: '',
+    description: '',
+    app_type: 'desktop-application',
+    license: '',
+    homepage: '',
+    categories: [] as string[],
+    tags: [] as string[],
+    screenshots: [] as { url: string; caption: string }[],
+  })
+
   useEffect(() => {
     if (!subId) return
     getMySubmission(subId).then(s => setSub(s as AppSubmission)).catch(() => setSub(null)).finally(() => setLoading(false))
     getSubmissionComments(subId).then(setComments).catch(() => setComments([])).finally(() => setCommentLoading(false))
+    getCategories().then(setAvailCategories).catch(() => {})
   }, [subId])
+
+  function enterEdit() {
+    if (!sub) return
+    setEditForm({
+      name: sub.name ?? '',
+      summary: sub.summary ?? '',
+      description: sub.description ?? '',
+      app_type: sub.app_type ?? 'desktop-application',
+      license: sub.license ?? '',
+      homepage: sub.homepage ?? '',
+      categories: sub.categories ?? [],
+      tags: sub.tags ?? [],
+      screenshots: (sub.screenshots ?? []).map((s: { url: string; caption?: string | null } | string) =>
+        typeof s === 'string' ? { url: s, caption: '' } : { url: s.url, caption: s.caption ?? '' }
+      ),
+    })
+    setSaveErr(null)
+    setEditing(true)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setSaveErr(null)
+    try {
+      await updateSubmission(subId, {
+        name: editForm.name,
+        summary: editForm.summary || undefined,
+        description: editForm.description || undefined,
+        app_type: editForm.app_type,
+        license: editForm.license || undefined,
+        homepage: editForm.homepage || undefined,
+        categories: editForm.categories,
+        tags: editForm.tags.length ? editForm.tags : ['general'],
+        screenshots: editForm.screenshots.filter(s => s.url.trim()).map(s => ({ url: s.url, caption: s.caption || undefined })),
+      } as Parameters<typeof updateSubmission>[1])
+      const updated = await getMySubmission(subId)
+      setSub(updated as AppSubmission)
+      setEditing(false)
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : 'Failed to save changes')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function handleAddComment() {
     if (!newComment.trim()) return
@@ -3835,6 +3897,9 @@ export const DeveloperSubmissionDetailPage: React.FC = () => {
     revoked: 'bg-red-900 text-white',
   }
 
+  const APP_TYPES = ['desktop-application', 'console-application', 'web-application', 'runtime', 'addon']
+  const canEdit = sub.status !== 'approved'
+
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
@@ -3847,9 +3912,19 @@ export const DeveloperSubmissionDetailPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-gray-900">{sub.name}</h1>
             <p className="text-sm text-gray-400 font-mono mt-0.5">{sub.app_id}</p>
           </div>
-          <span className={`text-xs font-bold px-3 py-1.5 rounded-full capitalize whitespace-nowrap ${statusColor[sub.status] ?? 'bg-gray-100 text-gray-700'}`}>
-            {sub.status}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-full capitalize whitespace-nowrap ${statusColor[sub.status] ?? 'bg-gray-100 text-gray-700'}`}>
+              {sub.status}
+            </span>
+            {canEdit && !editing && (
+              <button
+                onClick={enterEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <RefreshCw size={13} /> Edit
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -3911,25 +3986,260 @@ export const DeveloperSubmissionDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Details */}
+      {/* Details — view or edit */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <h2 className="font-semibold text-gray-900 mb-4">Submission Details</h2>
-        <dl className="space-y-0 text-sm divide-y divide-gray-100">
-          {[
-            ['Submitted', fmtDate(sub.submitted_at)],
-            ['App type', sub.app_type],
-            ['License', sub.license],
-            ['Homepage', sub.homepage],
-            ['Categories', (sub.categories ?? []).join(', ') || '—'],
-          ].map(([k, v]) => v ? (
-            <div key={k} className="flex justify-between py-2.5">
-              <dt className="text-gray-500">{k}</dt>
-              <dd className="font-medium text-gray-800 text-right max-w-xs">{v}</dd>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-semibold text-gray-900">{editing ? 'Edit Submission' : 'Submission Details'}</h2>
+          {editing && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditing(false)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !editForm.name.trim() || editForm.categories.length === 0}
+                className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
             </div>
-          ) : null)}
-        </dl>
-        {sub.summary && <div className="mt-4 pt-4 border-t border-gray-100"><p className="text-xs text-gray-500 mb-1">Summary</p><p className="text-sm text-gray-800">{sub.summary}</p></div>}
-        {sub.description && <div className="mt-3"><p className="text-xs text-gray-500 mb-1">Description</p><p className="text-sm text-gray-800 whitespace-pre-line">{sub.description}</p></div>}
+          )}
+        </div>
+
+        {saveErr && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{saveErr}</div>
+        )}
+
+        {editing ? (
+          <div className="space-y-5">
+            {/* Name */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">App Name <span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="My App"
+              />
+            </div>
+
+            {/* Summary */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Summary</label>
+              <input
+                type="text"
+                value={editForm.summary}
+                onChange={e => setEditForm(p => ({ ...p, summary: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="One-line description shown in listings"
+              />
+            </div>
+
+            {/* App type + License */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">App Type</label>
+                <select
+                  value={editForm.app_type}
+                  onChange={e => setEditForm(p => ({ ...p, app_type: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  {APP_TYPES.map(t => (
+                    <option key={t} value={t}>{t.replace(/-/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">License</label>
+                <input
+                  type="text"
+                  value={editForm.license}
+                  onChange={e => setEditForm(p => ({ ...p, license: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="MIT, GPL-3.0, Apache-2.0…"
+                />
+              </div>
+            </div>
+
+            {/* Homepage */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Homepage URL</label>
+              <input
+                type="url"
+                value={editForm.homepage}
+                onChange={e => setEditForm(p => ({ ...p, homepage: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="https://example.com"
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+              <textarea
+                value={editForm.description}
+                onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
+                rows={5}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                placeholder="Full description of your app…"
+              />
+            </div>
+
+            {/* Categories */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-2">
+                Categories <span className="text-red-500">*</span>
+                <span className="text-gray-400 font-normal ml-1">({editForm.categories.length} selected)</span>
+              </label>
+              {availCategories.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {availCategories.map(cat => {
+                    const selected = editForm.categories.includes(cat.name)
+                    return (
+                      <button
+                        key={cat.name}
+                        type="button"
+                        onClick={() => setEditForm(p => ({
+                          ...p,
+                          categories: selected
+                            ? p.categories.filter(c => c !== cat.name)
+                            : [...p.categories, cat.name]
+                        }))}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          selected
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={editForm.categories.join(', ')}
+                  onChange={e => setEditForm(p => ({ ...p, categories: e.target.value.split(',').map(c => c.trim()).filter(Boolean) }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Utility, Education, …"
+                />
+              )}
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Tags <span className="text-gray-400 font-normal">(comma separated, max 10)</span></label>
+              <input
+                type="text"
+                value={editForm.tags.join(', ')}
+                onChange={e => setEditForm(p => ({ ...p, tags: e.target.value.split(',').map(t => t.trim().toLowerCase()).filter(Boolean).slice(0, 10) }))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="utility, open-source, gtk…"
+              />
+            </div>
+
+            {/* Screenshots */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-gray-500">Screenshots</label>
+                <button
+                  type="button"
+                  onClick={() => setEditForm(p => ({ ...p, screenshots: [...p.screenshots, { url: '', caption: '' }] }))}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                >
+                  <Plus size={12} /> Add screenshot
+                </button>
+              </div>
+              <div className="space-y-2">
+                {editForm.screenshots.map((s, i) => (
+                  <div key={i} className="flex gap-2 items-start">
+                    <div className="flex-1 space-y-1">
+                      <input
+                        type="url"
+                        value={s.url}
+                        onChange={e => setEditForm(p => {
+                          const shots = [...p.screenshots]
+                          shots[i] = { ...shots[i], url: e.target.value }
+                          return { ...p, screenshots: shots }
+                        })}
+                        placeholder="https://… (screenshot URL)"
+                        className="w-full px-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <input
+                        type="text"
+                        value={s.caption}
+                        onChange={e => setEditForm(p => {
+                          const shots = [...p.screenshots]
+                          shots[i] = { ...shots[i], caption: e.target.value }
+                          return { ...p, screenshots: shots }
+                        })}
+                        placeholder="Caption (optional)"
+                        className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditForm(p => ({ ...p, screenshots: p.screenshots.filter((_, j) => j !== i) }))}
+                      className="mt-1 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                {editForm.screenshots.length === 0 && (
+                  <p className="text-xs text-gray-400">No screenshots added.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Save notice */}
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Saving will resubmit this as a <strong>pending</strong> submission for admin review.
+            </p>
+          </div>
+        ) : (
+          <>
+            <dl className="space-y-0 text-sm divide-y divide-gray-100">
+              {[
+                ['Submitted', fmtDate(sub.submitted_at)],
+                ['App type', sub.app_type],
+                ['License', sub.license],
+                ['Homepage', sub.homepage],
+                ['Categories', (sub.categories ?? []).join(', ') || '—'],
+                ['Tags', (sub.tags ?? []).join(', ') || '—'],
+              ].map(([k, v]) => v ? (
+                <div key={k} className="flex justify-between py-2.5">
+                  <dt className="text-gray-500">{k}</dt>
+                  <dd className="font-medium text-gray-800 text-right max-w-xs">{v}</dd>
+                </div>
+              ) : null)}
+            </dl>
+            {sub.summary && <div className="mt-4 pt-4 border-t border-gray-100"><p className="text-xs text-gray-500 mb-1">Summary</p><p className="text-sm text-gray-800">{sub.summary}</p></div>}
+            {sub.description && <div className="mt-3"><p className="text-xs text-gray-500 mb-1">Description</p><p className="text-sm text-gray-800 whitespace-pre-line">{sub.description}</p></div>}
+            {(sub.screenshots ?? []).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-500 mb-3">Screenshots</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(sub.screenshots ?? []).map((s, i) => {
+                    const url = typeof s === 'string' ? s : s.url
+                    const caption = typeof s === 'string' ? null : s.caption
+                    return (
+                      <div key={i} className="rounded-lg overflow-hidden border border-gray-200">
+                        <img src={url} alt={caption ?? `Screenshot ${i + 1}`} className="w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                        {caption && <p className="text-xs text-gray-400 px-2 py-1">{caption}</p>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Comments from admin/moderator */}
